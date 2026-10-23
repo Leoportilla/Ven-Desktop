@@ -1,0 +1,23 @@
+{
+  "name": "ven-desktop",
+  "version": "0.1.0",
+  "description": "VEN para computador (Windows)",
+  "main": "main.js",
+  "author": "VEN",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "br.com.ven.desktop",
+    "productName": "VEN",
+    "files": ["main.js", "preload.js", "renderer/**/*"],
+    "win": { "target": "portable", "artifactName": "VEN-Desktop-${version}-portable.exe" },
+    "portable": { "artifactName": "VEN-Desktop-${version}-portable.exe" }
+  }
+}
