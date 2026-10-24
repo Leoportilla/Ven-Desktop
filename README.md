@@ -24,3 +24,13 @@ Um backup de exemplo está em `exemplo/backup-exemplo.json`.
 
 ## Próximas fases
 Edição/lançamento, venda rápida de balcão, login do Drive, sincronização em tempo real, NF-e.
+
+
+## Google Drive (integração inicial)
+
+- O botão **Conectar Google** inicia OAuth para desktop com PKCE e callback local.
+- O segredo do cliente é solicitado localmente e guardado junto do token usando o armazenamento seguro do Electron/Windows; não o coloque no código-fonte nem envie por mensagem.
+- O botão **Sincronizar com Android** procura `VEN_BACKUP_*.json` na pasta privada `appDataFolder`, baixa o mais recente e valida o formato antes de substituir os dados locais. Se já existir um backup local válido, cria uma cópia `ven-backup-antes-drive-*.json` na pasta `dados`.
+- O projeto OAuth precisa estar no mesmo projeto Google Cloud usado pelo app Android e a conta Google precisa ter acesso. Se a lista vier vazia, essa correspondência ainda precisa ser verificada.
+- Esta integração ainda precisa de teste real no Windows com a conta Google do usuário. O ambiente de desenvolvimento não tem como confirmar o login OAuth nem a visibilidade dos backups do Drive.
+- Não é emissão fiscal; impressão continua sendo recibo comercial.

@@ -1,12 +1,77 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu, shell, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
+const crypto = require('crypto');
+const { URL } = require('url');
 
 // Modo portable: guarda os dados em "dados" ao lado do .exe (PORTABLE_EXECUTABLE_DIR é definido pelo electron-builder).
 const base = process.env.PORTABLE_EXECUTABLE_DIR || (app.isPackaged ? path.dirname(process.execPath) : __dirname);
 const pastaDados = path.join(base, 'dados');
 const arquivoBackup = path.join(pastaDados, 'ven-backup.json');
+const arquivoToken = path.join(pastaDados, 'google-token.bin');
+const GOOGLE_CLIENT_ID = '62502411129-11fe7v3gstvi2a8dcet7fej64r0r171d.apps.googleusercontent.com';
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
 try { fs.mkdirSync(pastaDados, { recursive: true }); } catch (_) {}
+let oauthServer = null;
+function guardarToken(token) {
+  if (!safeStorage.isEncryptionAvailable()) throw new Error('O Windows não disponibilizou armazenamento seguro para o token.');
+  fs.writeFileSync(arquivoToken, safeStorage.encryptString(JSON.stringify(token)));
+}
+function lerToken() {
+  if (!fs.existsSync(arquivoToken)) return null;
+  if (!safeStorage.isEncryptionAvailable()) throw new Error('Não foi possível desbloquear o token seguro neste computador.');
+  return JSON.parse(safeStorage.decryptString(fs.readFileSync(arquivoToken)));
+}
+function limparToken() { try { fs.unlinkSync(arquivoToken); } catch (_) {} }
+async function oauthConectar(clientSecret) {
+  if (!clientSecret || !String(clientSecret).trim()) throw new Error('Cole o segredo do cliente OAuth para continuar.');
+  const verifier = crypto.randomBytes(32).toString('base64url');
+  const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
+  const state = crypto.randomBytes(24).toString('hex');
+  return new Promise((resolve, reject) => {
+    let done = false, timeout;
+    const finish = (err, val) => { if (done) return; done = true; clearTimeout(timeout); try { oauthServer && oauthServer.close(); } catch (_) {} oauthServer = null; err ? reject(err) : resolve(val); };
+    oauthServer = http.createServer(async (req, res) => {
+      const u = new URL(req.url, 'http://127.0.0.1');
+      if (u.pathname !== '/oauth2callback') { res.writeHead(404); res.end('Not found'); return; }
+      if (u.searchParams.get('state') !== state) { res.writeHead(400); res.end('Estado inválido.'); return finish(new Error('Resposta OAuth inválida.')); }
+      const code = u.searchParams.get('code'), oauthErr = u.searchParams.get('error');
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end('<!doctype html><meta charset="utf-8"><title>VEN</title><h2>Autorização recebida</h2><p>Você pode voltar ao VEN Desktop.</p>');
+      if (oauthErr || !code) return finish(new Error('Autorização recusada: ' + (oauthErr || 'código ausente')));
+      try {
+        const redirect = `http://127.0.0.1:${oauthServer.address().port}/oauth2callback`;
+        const body = new URLSearchParams({ client_id: GOOGLE_CLIENT_ID, client_secret: String(clientSecret).trim(), code, code_verifier: verifier, redirect_uri: redirect, grant_type: 'authorization_code' });
+        const resp = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
+        const data = await resp.json();
+        if (!resp.ok || !data.access_token) throw new Error(data.error_description || data.error || 'O Google não retornou token.');
+        data.client_secret = String(clientSecret).trim(); data.obtido_em = Date.now(); guardarToken(data); finish(null, { ok: true });
+      } catch (e) { finish(e); }
+    });
+    oauthServer.on('error', e => finish(e));
+    oauthServer.listen(0, '127.0.0.1', async () => {
+      const redirect = `http://127.0.0.1:${oauthServer.address().port}/oauth2callback`;
+      const q = new URLSearchParams({ client_id: GOOGLE_CLIENT_ID, redirect_uri: redirect, response_type: 'code', scope: DRIVE_SCOPE, access_type: 'offline', prompt: 'consent', code_challenge: challenge, code_challenge_method: 'S256', state });
+      try { await shell.openExternal('https://accounts.google.com/o/oauth2/v2/auth?' + q.toString()); } catch (e) { finish(e); }
+    });
+    timeout = setTimeout(() => finish(new Error('Tempo de autorização expirou. Tente novamente.')), 180000);
+  });
+}
+async function tokenAcesso() {
+  let t = lerToken(); if (!t) throw new Error('Clique em Conectar Google primeiro.');
+  if (t.access_token && Date.now() < (t.obtido_em || 0) + (Number(t.expires_in || 3600) - 60) * 1000) return t.access_token;
+  if (!t.refresh_token) throw new Error('Autorização expirada. Conecte ao Google novamente.');
+  const body = new URLSearchParams({ client_id: GOOGLE_CLIENT_ID, client_secret: t.client_secret, refresh_token: t.refresh_token, grant_type: 'refresh_token' });
+  const resp = await fetch('https://oauth2.googleapis.com/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
+  const d = await resp.json(); if (!resp.ok || !d.access_token) throw new Error(d.error_description || d.error || 'Não foi possível renovar a autorização.');
+  t = { ...t, ...d, client_secret: t.client_secret, refresh_token: d.refresh_token || t.refresh_token, obtido_em: Date.now() }; guardarToken(t); return t.access_token;
+}
+async function driveFetch(url) {
+  const tok = await tokenAcesso(); const resp = await fetch(url, { headers: { Authorization: 'Bearer ' + tok } });
+  if (!resp.ok) { let m = ''; try { const j = await resp.json(); m = j.error && j.error.message || ''; } catch (_) {} throw new Error(`Google Drive respondeu ${resp.status}${m ? ': ' + m : ''}`); }
+  return resp;
+}
 
 function validar(texto) {
   const d = JSON.parse(texto);
@@ -46,6 +111,26 @@ ipcMain.handle('backup:salvarCopia', async (_e, texto) => {
 ipcMain.handle('backup:gravar', async (_e, texto) => {
   try { validar(texto); const tmp = arquivoBackup + '.tmp'; fs.writeFileSync(tmp, texto, 'utf8'); fs.renameSync(tmp, arquivoBackup); return { ok: true }; }
   catch (e) { return { ok: false, erro: e.message }; }
+});
+ipcMain.handle('drive:conectar', async (_e, segredo) => { try { await oauthConectar(segredo); return { ok: true }; } catch (e) { return { ok: false, erro: e.message }; } });
+ipcMain.handle('drive:estado', async () => { try { return { ok: true, conectado: !!lerToken() }; } catch (e) { return { ok: false, conectado: false, erro: e.message }; } });
+ipcMain.handle('drive:desconectar', async () => { limparToken(); return { ok: true }; });
+ipcMain.handle('drive:sincronizar', async () => {
+  try {
+    const q = encodeURIComponent("'appDataFolder' in parents and trashed = false and name contains 'VEN_BACKUP_'");
+    const resp = await driveFetch('https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&orderBy=modifiedTime%20desc&pageSize=100&fields=files(id,name,mimeType,modifiedTime,size)&q=' + q);
+    const j = await resp.json(); const files = (j.files || []).filter(f => /^VEN_BACKUP_.*\.json$/i.test(f.name || '')).sort((a,b) => String(b.modifiedTime || '').localeCompare(String(a.modifiedTime || '')));
+    if (!files.length) throw new Error('Nenhum VEN_BACKUP_*.json encontrado na área privada do Drive. Confirme a conta Google e faça um backup no celular.');
+    const f = files[0], dl = await driveFetch('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(f.id) + '?alt=media');
+    const texto = await dl.text(), dados = validar(texto);
+    if (fs.existsSync(arquivoBackup)) {
+      const atual = fs.readFileSync(arquivoBackup, 'utf8'); validar(atual);
+      const nome = 'ven-backup-antes-drive-' + new Date().toISOString().replace(/[:.]/g, '-') + '.json';
+      fs.writeFileSync(path.join(pastaDados, nome), atual, 'utf8');
+    }
+    const tmp = arquivoBackup + '.tmp'; fs.writeFileSync(tmp, texto, 'utf8'); fs.renameSync(tmp, arquivoBackup);
+    return { ok: true, dados, nome: f.name, modificado: f.modifiedTime || null, total: files.length };
+  } catch (e) { return { ok: false, erro: e.message }; }
 });
 ipcMain.handle('imprimir', async (e) => new Promise(res => { e.sender.print({ printBackground: true }, ok => res({ ok })); }));
 

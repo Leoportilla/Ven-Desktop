@@ -173,5 +173,19 @@ document.addEventListener('keydown', e => {
   if (pdv && e.key === 'F9') { e.preventDefault(); salvarOrcamento(true); }
 });
 $('#btnAbrir').onclick = abrir; $('#btnSalvar').onclick = salvar;
+$('#btnDriveConectar').onclick = async () => {
+  const segredo = prompt('Cole o segredo do cliente OAuth do VEN Desktop. Ele será armazenado criptografado neste computador.');
+  if (!segredo) return;
+  $('#btnDriveConectar').disabled = true; toast('Abrindo autorização do Google…');
+  try { const r = await window.venDesktop.driveConectar(segredo); if (!r.ok) toast(r.erro || 'Falha ao conectar ao Google.', true); else { toast('Google Drive conectado.'); $('#btnDriveConectar').textContent = 'Google conectado'; } }
+  catch (e) { toast(e.message || 'Falha ao conectar ao Google.', true); } finally { $('#btnDriveConectar').disabled = false; }
+};
+$('#btnDriveSync').onclick = async () => {
+  if (!confirm('A sincronização substituirá os dados abertos pelo backup mais recente do Drive. Uma cópia dos dados atuais será salva antes. Continuar?')) return;
+  $('#btnDriveSync').disabled = true; toast('Procurando backup no Google Drive…');
+  try { const r = await window.venDesktop.driveSincronizar(); if (!r.ok) return toast(r.erro || 'Não foi possível sincronizar.', true); backup = r.dados; origem = r.nome; salvoEm = ''; render(); toast('Sincronização concluída: ' + r.nome); }
+  catch (e) { toast(e.message || 'Falha na sincronização.', true); } finally { $('#btnDriveSync').disabled = false; }
+};
+(async () => { try { const r = await window.venDesktop.driveEstado(); if (r.conectado) $('#btnDriveConectar').textContent = 'Google conectado'; } catch (_) {} })();
 $('#busca').addEventListener('input', e => { termo = e.target.value; const pos = e.target.selectionStart; render(); const b = $('#busca'); b.focus(); try { b.setSelectionRange(pos, pos); } catch (_) { } });
 (async () => { try { const r = await window.venDesktop.carregarSalvo(); if (r.ok && r.dados) { backup = r.dados; origem = 'último aberto'; } else if (!r.ok) toast(r.erro, true); } catch (_) { } render(); })();

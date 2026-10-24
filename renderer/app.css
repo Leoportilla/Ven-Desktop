@@ -6,6 +6,7 @@ body{font:14px/1.45 "Segoe UI",system-ui,Arial,sans-serif;background:var(--bg);c
 .side{width:224px;flex:none;background:var(--side);color:var(--side-tx);display:flex;flex-direction:column;padding:16px 12px}
 .brand{display:flex;align-items:center;gap:10px;padding:4px 8px 18px;font-size:18px}
 .logo{width:32px;height:32px;border-radius:9px;background:var(--pri);color:var(--pri-tx);display:grid;place-items:center;font-weight:800}
+.logo-img{width:34px;height:34px;object-fit:contain;border-radius:7px}
 #nav{display:flex;flex-direction:column;gap:2px}
 #nav button{all:unset;cursor:pointer;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;color:inherit;opacity:.82}
 #nav button:hover{background:rgba(255,255,255,.07);opacity:1}

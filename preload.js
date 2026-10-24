@@ -4,5 +4,8 @@ contextBridge.exposeInMainWorld('venDesktop', {
   abrirBackup: () => ipcRenderer.invoke('backup:abrir'),
   gravar: (texto) => ipcRenderer.invoke('backup:gravar', texto),
   imprimir: () => ipcRenderer.invoke('imprimir'),
-  salvarCopia: (texto) => ipcRenderer.invoke('backup:salvarCopia', texto)
+  salvarCopia: (texto) => ipcRenderer.invoke('backup:salvarCopia', texto),
+  driveConectar: (segredo) => ipcRenderer.invoke('drive:conectar', segredo),
+  driveEstado: () => ipcRenderer.invoke('drive:estado'),
+  driveSincronizar: () => ipcRenderer.invoke('drive:sincronizar')
 });
