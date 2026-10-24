@@ -1,4 +1,4 @@
-name: Gerar VEN Desktop (Windows portable)
+name: Gerar VEN Desktop (pasta portátil)
 on:
   push:
     branches: [main]
@@ -13,7 +13,10 @@ jobs:
           node-version: 20
       - run: npm install
       - run: npm run dist
+      - name: Compactar pasta portátil
+        shell: pwsh
+        run: Compress-Archive -Path dist\win-unpacked\* -DestinationPath VEN-Desktop-pasta-portatil.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: VEN-Desktop-portable
-          path: dist/*.exe
+          name: VEN-Desktop-pasta-portatil
+          path: VEN-Desktop-pasta-portatil.zip
