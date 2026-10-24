@@ -174,7 +174,19 @@ document.addEventListener('keydown', e => {
 });
 $('#btnAbrir').onclick = abrir; $('#btnSalvar').onclick = salvar;
 const googleCredModal = $('#googleCredModal');
-$('#btnDriveConectar').onclick = () => {
+$('#btnDriveConectar').onclick = async () => {
+  // Não reabre o fluxo OAuth quando já existe uma autorização salva.
+  // Se a autorização falhou/foi revogada, permita tentar novamente.
+  $('#btnDriveConectar').disabled = true;
+  try {
+    const estado = await window.venDesktop.driveEstado();
+    if (estado && estado.conectado) {
+      $('#btnDriveConectar').textContent = 'Google conectado';
+      toast('O Google já está conectado. Para sincronizar, use “Sincronizar com Android”.');
+      return;
+    }
+  } catch (_) { /* segue para a tela de conexão */ }
+  finally { $('#btnDriveConectar').disabled = false; }
   $('#googleClientSecret').value = '';
   googleCredModal.hidden = false;
   $('#googleClientSecret').focus();
