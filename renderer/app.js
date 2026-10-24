@@ -24,6 +24,7 @@ const barra = (...b) => `<div class="barra">${b.join('')}</div>`;
 const casa = (...campos) => !termo || norm(campos.join(' ')).includes(norm(termo));
 const pillRec = (rec, venc) => rec ? '<span class="pill ok">Recebida</span>' : (venc && venc < hojeISO() ? '<span class="pill bad">Vencida</span>' : '<span class="pill mut">Em aberto</span>');
 function pillVenda(v) { const e = estadoVenda(v); return e === 'paid' ? '<span class="pill ok">Recebida</span>' : e === 'partial' ? '<span class="pill warn">Parcial</span>' : pillRec(false, v.vencimento); }
+function imagemProduto(p, classe = '') { const src = typeof p?.img === 'string' && /^data:image\/(png|jpe?g|webp|gif);base64,/i.test(p.img) ? p.img : ''; return src ? `<img class="produto-foto ${classe}" src="${src}" alt="" loading="lazy">` : `<span class="produto-foto sem-foto ${classe}" aria-label="Sem foto"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h13A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18.5z"/><circle cx="8.5" cy="9" r="1.5"/><path d="m5 17 4-4 3 3 3-5 4 6"/></svg></span>`; }
 
 function resumo(d, ym) {
   const vm = d.vendas.filter(v => ymDe(v.data) === ym);
@@ -60,8 +61,8 @@ function vProdutos(d) {
   const f = sub.produtos || 'todos';
   let l = d.produtos.filter(p => f === 'todos' || (f === 'servicos' ? p.kind === 'service' : p.kind !== 'service')).filter(p => casa(p.id, p.d, p.description, arr(p.b).join(' '), p.ncm));
   const total = l.length; l = l.slice(0, 400);
-  return barra(`<button class="btn pri" data-act="novoProduto">+ Novo produto/serviço</button>`) + abas('produtos', [['todos', 'Todos (' + d.produtos.length + ')'], ['produtos', 'Produtos'], ['servicos', 'Serviços']], f)
-    + tabela([{ t: 'Código' }, { t: 'Descrição' }, { t: 'NCM' }, { t: 'Estoque', num: 1 }, { t: 'Preço', num: 1 }, { t: '' }], l.map(p => [esc(p.id), esc(p.d || p.description), p.kind === 'service' ? '—' : (p.ncm ? esc(p.ncm) : '<span class="pill warn">falta</span>'), p.kind === 'service' ? '—' : esc(p.q), esc(brl(p.p)), acoesTd(btn('Editar', `editProd:${p.id}`), btn('Excluir', `delProd:${p.id}`, 'perigo'))]), 'Nenhum produto')
+  return barra(`<button class="btn pri" data-act="novoProduto">+ Novo produto/serviço</button>`, `<span class="mut small">${l.filter(p => p.img).length} item(ns) com foto nesta lista</span>`) + abas('produtos', [['todos', 'Todos (' + d.produtos.length + ')'], ['produtos', 'Produtos'], ['servicos', 'Serviços']], f)
+    + tabela([{ t: 'Foto' }, { t: 'Código' }, { t: 'Produto / serviço' }, { t: 'NCM' }, { t: 'Estoque', num: 1 }, { t: 'Preço', num: 1 }, { t: '' }], l.map(p => [imagemProduto(p), `<span class="codigo-produto">${esc(p.id)}</span>`, `<div class="produto-nome"><b>${esc(p.d || p.description)}</b>${p.kind === 'service' ? '<small>Serviço</small>' : (p.unit ? `<small>Unidade: ${esc(p.unit)}</small>` : '')}</div>`, p.kind === 'service' ? '—' : (p.ncm ? esc(p.ncm) : '<span class="pill warn">falta</span>'), p.kind === 'service' ? '—' : esc(p.q), `<strong class="preco-produto">${esc(brl(p.p))}</strong>`, acoesTd(btn('Editar', `editProd:${p.id}`), btn('Excluir', `delProd:${p.id}`, 'perigo'))]), 'Nenhum produto')
     + (total > 400 ? `<p class="mut small">Mostrando 400 de ${total}. Refine a busca.</p>` : '');
 }
 function vClientes(d) {
@@ -105,7 +106,7 @@ function vPdv(d) {
 }
 function pdvResultados() {
   const d = dados(), q = norm($('#pdvBusca') ? $('#pdvBusca').value : ''), l = (q ? d.produtos.filter(p => norm([p.id, p.d, p.description, arr(p.b).join(' ')].join(' ')).includes(q)) : d.produtos).slice(0, 40);
-  $('#pdvRes').innerHTML = l.length ? l.map(p => `<button class="pdv-item" data-add="${esc(p.id)}"><span><b>${esc(p.d)}</b><small>${esc(p.id)}${p.kind === 'service' ? ' · serviço' : ' · estoque ' + esc(p.q)}</small></span><b class="pri-tx">${esc(brl(p.p))}</b></button>`).join('') : '<div class="mut" style="padding:14px">Nenhum item encontrado.</div>';
+  $('#pdvRes').innerHTML = l.length ? l.map(p => `<button class="pdv-item" data-add="${esc(p.id)}">${imagemProduto(p, 'pdv-foto')}<span class="pdv-item-info"><b>${esc(p.d || p.description || 'Item sem descrição')}</b><small>${esc(p.id)}${p.kind === 'service' ? ' · serviço' : ' · estoque ' + esc(p.q)}</small></span><b class="pri-tx pdv-preco">${esc(brl(p.p))}</b></button>`).join('') : '<div class="mut" style="padding:14px">Nenhum item encontrado.</div>';
 }
 function renderPdvLado() {
   const d = dados(), t = totaisItens(pdv.itens, pdv.desc, pdv.tipo);
