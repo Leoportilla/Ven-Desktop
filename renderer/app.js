@@ -173,14 +173,28 @@ document.addEventListener('keydown', e => {
   if (pdv && e.key === 'F9') { e.preventDefault(); salvarOrcamento(true); }
 });
 $('#btnAbrir').onclick = abrir; $('#btnSalvar').onclick = salvar;
-$('#btnDriveConectar').onclick = async () => {
-  const segredo = prompt('Cole o segredo do cliente OAuth do VEN Desktop. Ele será armazenado criptografado neste computador.');
-  if (!segredo) return;
-  $('#btnDriveConectar').disabled = true; toast('Abrindo autorização do Google…');
-  try { const r = await window.venDesktop.driveConectar(segredo); if (!r.ok) toast(r.erro || 'Falha ao conectar ao Google.', true); else { toast('Google Drive conectado.'); $('#btnDriveConectar').textContent = 'Google conectado'; } }
-  catch (e) { toast(e.message || 'Falha ao conectar ao Google.', true); } finally { $('#btnDriveConectar').disabled = false; }
+const googleCredModal = $('#googleCredModal');
+$('#btnDriveConectar').onclick = () => {
+  $('#googleClientSecret').value = '';
+  googleCredModal.hidden = false;
+  $('#googleClientSecret').focus();
 };
+$('#googleCredCancel').onclick = () => { googleCredModal.hidden = true; };
+$('#googleCredContinue').onclick = async () => {
+  const segredo = $('#googleClientSecret').value.trim();
+  if (!segredo) { toast('Cole a chave secreta do cliente OAuth para continuar.', true); $('#googleClientSecret').focus(); return; }
+  $('#googleCredContinue').disabled = true; $('#btnDriveConectar').disabled = true; toast('Abrindo autorização do Google…');
+  try {
+    const r = await window.venDesktop.driveConectar(segredo);
+    if (!r.ok) toast(r.erro || 'Falha ao conectar ao Google.', true);
+    else { googleCredModal.hidden = true; toast('Google Drive conectado.'); $('#btnDriveConectar').textContent = 'Google conectado'; }
+  } catch (e) { toast(e.message || 'Falha ao conectar ao Google.', true); }
+  finally { $('#googleCredContinue').disabled = false; $('#btnDriveConectar').disabled = false; }
+};
+$('#googleClientSecret').addEventListener('keydown', e => { if (e.key === 'Enter') $('#googleCredContinue').click(); if (e.key === 'Escape') googleCredModal.hidden = true; });
 $('#btnDriveSync').onclick = async () => {
+  try { const estado = await window.venDesktop.driveEstado(); if (!estado.conectado) { toast('Primeiro clique em Conectar Google e conclua a autorização.', true); return; } }
+  catch (_) { toast('Primeiro conecte o Google Drive.', true); return; }
   if (!confirm('A sincronização substituirá os dados abertos pelo backup mais recente do Drive. Uma cópia dos dados atuais será salva antes. Continuar?')) return;
   $('#btnDriveSync').disabled = true; toast('Procurando backup no Google Drive…');
   try { const r = await window.venDesktop.driveSincronizar(); if (!r.ok) return toast(r.erro || 'Não foi possível sincronizar.', true); backup = r.dados; origem = r.nome; salvoEm = ''; render(); toast('Sincronização concluída: ' + r.nome); }

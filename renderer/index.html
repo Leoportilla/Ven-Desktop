@@ -27,6 +27,15 @@
   <section id="conteudo" class="conteudo"></section>
 </main>
 <div id="toast" class="toast" hidden></div>
+<div id="googleCredModal" class="modal-bg" hidden role="dialog" aria-modal="true" aria-labelledby="googleCredTitle">
+  <div class="modal" style="padding:22px;gap:14px">
+    <h2 id="googleCredTitle" style="margin:0">Conectar ao Google Drive</h2>
+    <p class="mut" style="margin:0">Cole a chave secreta do cliente OAuth criada no Google Cloud. Ela será guardada criptografada neste computador.</p>
+    <label for="googleClientSecret">Chave secreta do cliente</label>
+    <input id="googleClientSecret" type="password" autocomplete="off" placeholder="Cole a chave secreta aqui">
+    <div style="display:flex;justify-content:flex-end;gap:8px"><button class="btn" id="googleCredCancel">Cancelar</button><button class="btn pri" id="googleCredContinue">Continuar</button></div>
+  </div>
+</div>
 <div id="imp" class="imp"></div>
 <script src="util.js"></script>
 <script src="acoes.js"></script>

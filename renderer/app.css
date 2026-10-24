@@ -80,3 +80,6 @@ table.mini{width:100%}table.mini th,table.mini td{padding:7px 8px}table.mini inp
 .imp{display:none}
 @media print{body>*:not(#imp){display:none!important}.imp{display:block!important;color:#000;background:#fff;font:13px Arial}.imp table{width:100%;border-collapse:collapse}.imp th,.imp td{border-bottom:1px solid #ccc;padding:6px;text-align:left}.imp .r{text-align:right}.imp h2{color:#e56a00}}
 @media(max-width:1100px){.pdv{grid-template-columns:1fr;height:auto}}
+
+[hidden]{display:none!important}
+#googleCredModal input{width:100%;box-sizing:border-box}
