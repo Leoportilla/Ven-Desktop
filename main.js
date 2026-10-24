@@ -43,5 +43,11 @@ ipcMain.handle('backup:salvarCopia', async (_e, texto) => {
   try { fs.writeFileSync(r.filePath, texto, 'utf8'); return { ok: true, salvo: true }; } catch (e) { return { ok: false, erro: e.message }; }
 });
 
+ipcMain.handle('backup:gravar', async (_e, texto) => {
+  try { validar(texto); const tmp = arquivoBackup + '.tmp'; fs.writeFileSync(tmp, texto, 'utf8'); fs.renameSync(tmp, arquivoBackup); return { ok: true }; }
+  catch (e) { return { ok: false, erro: e.message }; }
+});
+ipcMain.handle('imprimir', async (e) => new Promise(res => { e.sender.print({ printBackground: true }, ok => res({ ok })); }));
+
 app.whenReady().then(criarJanela);
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
