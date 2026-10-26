@@ -30,10 +30,11 @@ function htmlDocumento(doc, formato) {
   const pg = doc.tipo === 'venda' ? (arr(doc.pagamentos).length ? '<div class="sec">Pagamento</div>' + doc.pagamentos.map(p => lin(esc(p.forma || ''), brl(p.valor))).join('') : '') + (doc.saldo > 0.004 ? lin('A receber', brl(doc.saldo), 'forte') + (doc.vencimento ? lin('Vencimento', dataBR(doc.vencimento)) : '') : '') : '';
   const css = `
   *{box-sizing:border-box;margin:0;padding:0}
+  @page{margin:0}
   html,body{background:#fff;color:#000}
-  body{font-family:${termico ? "Consolas,'Courier New',monospace" : "'Segoe UI',Arial,sans-serif"};font-size:${formato === '58' ? 10 : termico ? 11.5 : 13}px;line-height:1.35;width:${termico ? (largo ? '80mm' : '58mm') : '100%'};padding:${termico ? '3mm 4mm 5mm' : '16mm 15mm'}}
+  body{font-family:${termico ? "Consolas,'Courier New',monospace" : "'Segoe UI',Arial,sans-serif"};font-size:${formato === '58' ? 10 : largo ? 12.5 : termico ? 10.5 : 13}px;line-height:1.38;width:${termico ? (largo ? '80mm' : '58mm') : '100%'};min-width:${termico ? (largo ? '80mm' : '58mm') : '0'};padding:${termico ? (largo ? '3mm 3.5mm 5mm' : '3mm 3mm 5mm') : '16mm 15mm'}}
   .topo{text-align:center;margin-bottom:${termico ? 6 : 14}px}
-  .logo{display:block;margin:0 auto 6px;max-width:${termico ? '34mm' : '46mm'};max-height:${termico ? '16mm' : '24mm'};object-fit:contain;${termico ? 'filter:grayscale(1) contrast(1.5);' : ''}}
+  .logo{display:block;margin:0 auto 6px;max-width:${termico ? (largo ? '40mm' : '30mm') : '46mm'};max-height:${termico ? '16mm' : '24mm'};object-fit:contain;${termico ? 'filter:grayscale(1) contrast(1.5);' : ''}}
   .nome{font-weight:700;font-size:${termico ? '1.15em' : '1.5em'};letter-spacing:.2px}
   .topo div{font-size:${termico ? '.92em' : '.95em'}}
   .tit{margin:${termico ? '8px 0 4px' : '10px 0 6px'};text-align:${termico ? 'center' : 'left'};font-weight:700;${termico ? '' : 'font-size:1.25em;border-bottom:2px solid #000;padding-bottom:6px'}}

@@ -170,7 +170,7 @@ const larguraMm = f => (f === '58' ? 58 : f === '80' ? 80 : 210);
 async function janelaDeImpressao(html, formato) {
   const tmp = path.join(os.tmpdir(), 'ven-imp-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7) + '.html');
   fs.writeFileSync(tmp, html, 'utf8');
-  const w = new BrowserWindow({ show: false, width: Math.round(larguraMm(formato) * PX_MM), height: 900, useContentSize: true, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } });
+  const w = new BrowserWindow({ show: false, width: Math.round(larguraMm(formato) * PX_MM), height: 1100, useContentSize: true, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } });
   w.webContents.setWindowOpenHandler(() => ({ action: 'deny' })); w.webContents.on('will-navigate', ev => ev.preventDefault());
   await w.loadFile(tmp);
   const altura = await w.webContents.executeJavaScript('Math.ceil(Math.max(document.documentElement.scrollHeight, document.body.scrollHeight))');

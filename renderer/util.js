@@ -156,9 +156,12 @@ function abrirMenu(ancora, itens, { alinhar = 'direita' } = {}) {
   let top = r.bottom + 6; if (top + mh > innerHeight - 8) top = Math.max(8, r.top - mh - 6);
   m.style.left = left + 'px'; m.style.top = top + 'px';
   m.addEventListener('click', e => { const b = e.target.closest('button[data-i]'); if (!b) return; const it = itens[Number(b.dataset.i)]; fecharMenu(); it && it.fn && it.fn(); });
+  // O menu é controlado por clique: não depende de hover nem de manter o botão pressionado.
+  m.addEventListener('pointerdown', e => e.stopPropagation());
   menuAberto = m; return m;
 }
-document.addEventListener('mousedown', e => { if (menuAberto && !menuAberto.contains(e.target) && !e.target.closest('[data-menu]')) fecharMenu(); }, true);
+document.addEventListener('pointerdown', e => { if (menuAberto && !menuAberto.contains(e.target) && !e.target.closest('[data-menu]')) fecharMenu(); }, true);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && menuAberto) fecharMenu(); });
 
 /* ---------- campos de formulário ---------- */
 const campo = (rot, id, val = '', extra = '', cls = '', dica = '') => `<label class="f ${cls}"><span>${esc(rot)}</span><input id="${id}" value="${esc(val)}" ${extra}>${dica ? `<small>${dica}</small>` : ''}</label>`;

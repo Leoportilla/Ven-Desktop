@@ -3,13 +3,13 @@
 let pdv = null;
 function abrirPdv(numOrc, nomeCliente) {
   const d = dados(), o = numOrc ? d.pedidos.find(x => Number(x.numero) === Number(numOrc)) : null;
-  pdv = { edit: o ? o.numero : null, cli: o ? o.cli || '' : (nomeCliente || ''), desc: o ? o.desc || 0 : 0, tipo: o ? o.tipo || '%' : '%', obs: o ? o.obs || '' : '', itens: o ? arr(o.itens).map(i => ({ ...i })) : [], cat: 'todos' };
+  pdv = { view: 'grade', edit: o ? o.numero : null, cli: o ? o.cli || '' : (nomeCliente || ''), desc: o ? o.desc || 0 : 0, tipo: o ? o.tipo || '%' : '%', obs: o ? o.obs || '' : '', itens: o ? arr(o.itens).map(i => ({ ...i })) : [], cat: 'todos' };
   irPara('pdv');
 }
 function vPdv(d) {
   const cats = ['todos', 'produto', 'serviço'];
   return `<div class="pdv"><section class="pdv-esq"><div class="pdv-topo"><label class="busca grande">${ic('search')}<input id="pdvBusca" placeholder="Buscar produto ou serviço, ou leia o código de barras" autocomplete="off"></label>
-    <div class="seg" id="pdvCat">${cats.map(c => `<button data-cat="${c}" class="${pdv.cat === c ? 'on' : ''}">${c === 'todos' ? 'Tudo' : c === 'produto' ? 'Produtos' : 'Serviços'}</button>`).join('')}</div></div>
+    <div class="seg" id="pdvCat">${cats.map(c => `<button data-cat="${c}" class="${pdv.cat === c ? 'on' : ''}">${c === 'todos' ? 'Tudo' : c === 'produto' ? 'Produtos' : 'Serviços'}</button>`).join('')}</div><div class="pdv-view" id="pdvView"><button type="button" data-view="grade" class="${pdv.view !== 'lista' ? 'on' : ''}" title="Cartões com fotos">Fotos</button><button type="button" data-view="lista" class="${pdv.view === 'lista' ? 'on' : ''}" title="Lista compacta">Lista</button></div></div>
     <div id="pdvRes" class="pdv-grade"></div></section>
     <aside class="pdv-dir"><header><h3>${pdv.edit ? 'Pedido ' + numPed(pdv.edit) : 'Venda atual'}</h3>${pdv.itens.length ? `<button class="btn mini" data-act="pdvLimpar">${ic('trash')}Limpar</button>` : ''}</header><div id="pdvLado"></div></aside></div>`;
 }
@@ -18,6 +18,7 @@ function pdvResultados() {
   let l = d.produtos; if (pdv.cat === 'produto') l = l.filter(p => p.kind !== 'service'); if (pdv.cat === 'serviço') l = l.filter(p => p.kind === 'service');
   if (q) l = l.filter(p => norm([p.id, p.d, p.description, arr(p.b).join(' ')].join(' ')).includes(q));
   const tot = l.length; l = l.slice(0, 60);
+  $('#pdvRes').classList.toggle('lista', pdv.view === 'lista');
   $('#pdvRes').innerHTML = l.length ? l.map(p => `<button class="pcard" data-add="${esc(p.id)}">${miniatura(p, 'pcard-foto')}<span class="pcard-nome">${esc(p.d || p.description || 'Item sem descrição')}</span><span class="pcard-rod"><b>${brl(p.p)}</b><small>${p.kind === 'service' ? 'serviço' : 'estoque ' + esc(p.q)}</small></span></button>`).join('') + (tot > l.length ? `<p class="mais">Mostrando ${l.length} de ${tot}. Refine a busca.</p>` : '') : `<div class="vazio-bloco">${ic('box')}<b>${d.produtos.length ? 'Nada encontrado' : 'Nenhum produto cadastrado'}</b><small>${d.produtos.length ? 'Tente outro termo.' : 'Cadastre produtos ou importe uma nota (XML) em Produtos.'}</small></div>`;
 }
 function pdvAdd(p) {
@@ -44,6 +45,7 @@ function ligarPdv() {
     const d = dados(), exato = d.produtos.find(p => norm(p.id) === q || arr(p.b).some(b => norm(b) === q)), un = !exato && $$('#pdvRes .pcard').length === 1 ? d.produtos.find(p => String(p.id) === $('#pdvRes .pcard').dataset.add) : null, p = exato || un;
     if (p) { pdvAdd(p); busca.value = ''; pdvResultados(); } else toast('Nenhum item com esse código. Confira ou refine a busca.', 'erro');
   };
+  $('#pdvView').onclick = e => { const b = e.target.closest('[data-view]'); if (!b) return; pdv.view = b.dataset.view; $$('#pdvView button').forEach(x => x.classList.toggle('on', x === b)); pdvResultados(); };
   $('#pdvCat').onclick = e => { const b = e.target.closest('[data-cat]'); if (!b) return; pdv.cat = b.dataset.cat; $$('#pdvCat button').forEach(x => x.classList.toggle('on', x === b)); pdvResultados(); };
   conteudo.onclick = e => {
     const a = e.target.closest('[data-add]'); if (a) { const p = dados().produtos.find(x => String(x.id) === a.dataset.add); if (p) pdvAdd(p); return; }
