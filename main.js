@@ -5,6 +5,9 @@ const http = require('http');
 const crypto = require('crypto');
 const { URL } = require('url');
 const os = require('os');
+const { spawn } = require('child_process');
+const { pipeline } = require('stream/promises');
+const { Readable } = require('stream');
 const servicos = require('./servicos');
 
 // Modo portable: guarda os dados em "dados" ao lado do .exe (PORTABLE_EXECUTABLE_DIR é definido pelo electron-builder).
@@ -242,5 +245,164 @@ ipcMain.handle('ocr:imagem', async (_e, dataUrl) => {
 });
 app.on('before-quit', () => { try { ocrWorker && ocrWorker.terminate(); } catch (_) {} });
 
-app.whenReady().then(criarJanela);
+
+
+/* ============ Atualização automática via GitHub Releases ============ */
+const UPDATE_REPO = 'Leoportilla/Ven-Desktop';
+const UPDATE_ZIP = 'VEN-Desktop-pasta-portatil.zip';
+const UPDATE_HASH = UPDATE_ZIP + '.sha256';
+let updateInProgress = false;
+function compararVersoes(a, b) {
+  const parse = v => String(v || '').replace(/^v/i, '').split(/[+-]/)[0].split('.').map(n => Number.parseInt(n, 10) || 0);
+  const aa = parse(a), bb = parse(b);
+  for (let i = 0; i < Math.max(aa.length, bb.length, 3); i++) {
+    const x = aa[i] || 0, y = bb[i] || 0;
+    if (x !== y) return x > y ? 1 : -1;
+  }
+  return 0;
+}
+async function obterReleaseMaisRecente() {
+  const resp = await fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`, {
+    headers: { 'Accept': 'application/vnd.github+json', 'User-Agent': 'VEN-Desktop-Updater', 'X-GitHub-Api-Version': '2022-11-28' },
+    signal: AbortSignal.timeout(15000)
+  });
+  if (resp.status === 404) return null;
+  if (!resp.ok) throw new Error(`GitHub respondeu ${resp.status} ao consultar atualizações.`);
+  const release = await resp.json();
+  if (release.draft || release.prerelease) return null;
+  const assets = Array.isArray(release.assets) ? release.assets : [];
+  const zip = assets.find(a => a.name === UPDATE_ZIP);
+  const hash = assets.find(a => a.name === UPDATE_HASH);
+  if (!release.tag_name || !zip || !hash || !zip.browser_download_url || !hash.browser_download_url) {
+    throw new Error('A última versão publicada não contém o pacote portátil e o arquivo de verificação.');
+  }
+  return { tag: release.tag_name, versao: String(release.tag_name).replace(/^v/i, ''), zipUrl: zip.browser_download_url, hashUrl: hash.browser_download_url, notas: String(release.body || '').slice(0, 4000), publicada: release.published_at || null };
+}
+async function verificarAtualizacao() {
+  const atual = app.getVersion();
+  const release = await obterReleaseMaisRecente();
+  if (!release) return { ok: true, atual, disponivel: false };
+  return { ok: true, atual, disponivel: compararVersoes(release.versao, atual) > 0, versao: release.versao, tag: release.tag, notas: release.notas, publicada: release.publicada };
+}
+async function baixarArquivo(url, destino) {
+  const u = new URL(url);
+  if (u.protocol !== 'https:' || u.hostname !== 'github.com') throw new Error('Endereço de atualização inválido.');
+  const resp = await fetch(url, { headers: { 'User-Agent': 'VEN-Desktop-Updater' }, signal: AbortSignal.timeout(10 * 60 * 1000) });
+  if (!resp.ok || !resp.body) throw new Error(`Falha ao baixar atualização (HTTP ${resp.status}).`);
+  await pipeline(Readable.fromWeb(resp.body), fs.createWriteStream(destino, { flags: 'wx' }));
+}
+function scriptAtualizador() {
+  return String.raw`param([Parameter(Mandatory=$true)][string]$InstallDir,[Parameter(Mandatory=$true)][string]$ZipPath,[Parameter(Mandatory=$true)][int]$ProcessId,[Parameter(Mandatory=$true)][string]$ExePath)
+$ErrorActionPreference = 'Stop'
+$stage = Join-Path $env:TEMP ('VEN-stage-' + [guid]::NewGuid().ToString('N'))
+$backup = Join-Path $env:TEMP ('VEN-rollback-' + [guid]::NewGuid().ToString('N'))
+$copied = New-Object System.Collections.Generic.List[string]
+$InstallDir = [IO.Path]::GetFullPath($InstallDir)
+try {
+  while (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 500 }
+  New-Item -ItemType Directory -Path $stage -Force | Out-Null
+  New-Item -ItemType Directory -Path $backup -Force | Out-Null
+  Expand-Archive -LiteralPath $ZipPath -DestinationPath $stage -Force
+  $files = Get-ChildItem -LiteralPath $stage -File -Recurse
+  if (-not ($files | Where-Object { $_.Name -eq 'VEN.exe' })) { throw 'O pacote não contém VEN.exe.' }
+  foreach ($file in $files) {
+    $relative = $file.FullName.Substring($stage.Length).TrimStart([char]92, [char]47)
+    if ($relative -match '(^|[\\/])\.\.([\\/]|$)') { throw 'O pacote contém um caminho inválido.' }
+    if ($relative -match '^dados([\\/]|$)') { continue }
+    $target = Join-Path $InstallDir $relative
+    $targetFull = [IO.Path]::GetFullPath($target)
+    if (-not $targetFull.StartsWith($InstallDir.TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase)) { throw 'Caminho de arquivo fora da pasta do VEN.' }
+    $parent = Split-Path -Parent $targetFull
+    New-Item -ItemType Directory -Path $parent -Force | Out-Null
+    if (Test-Path -LiteralPath $targetFull -PathType Leaf) {
+      $saved = Join-Path $backup $relative
+      New-Item -ItemType Directory -Path (Split-Path -Parent $saved) -Force | Out-Null
+      Copy-Item -LiteralPath $targetFull -Destination $saved -Force
+    }
+    $copied.Add($targetFull)
+    Copy-Item -LiteralPath $file.FullName -Destination $targetFull -Force
+  }
+  Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
+  Start-Process -FilePath $ExePath -WorkingDirectory $InstallDir
+  Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $ZipPath -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
+} catch {
+  $problem = $_.Exception.Message
+  $copyList = @($copied.ToArray()); [array]::Reverse($copyList)
+  foreach ($targetFull in $copyList) {
+    try {
+      $relative = $targetFull.Substring($InstallDir.Length).TrimStart([char]92, [char]47)
+      $saved = Join-Path $backup $relative
+      if (Test-Path -LiteralPath $saved -PathType Leaf) { Copy-Item -LiteralPath $saved -Destination $targetFull -Force }
+      elseif (Test-Path -LiteralPath $targetFull -PathType Leaf) { Remove-Item -LiteralPath $targetFull -Force }
+    } catch { }
+  }
+  try { Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.MessageBox]::Show('Não foi possível atualizar o VEN. Os arquivos anteriores foram restaurados quando possível.' + [Environment]::NewLine + [Environment]::NewLine + $problem, 'Atualização do VEN', 'OK', 'Error') | Out-Null } catch { }
+  Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $backup -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $ZipPath -Force -ErrorAction SilentlyContinue
+  Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
+}
+`;
+}
+async function instalarAtualizacao() {
+  if (updateInProgress) return { ok: false, erro: 'Uma atualização já está em andamento.' };
+  updateInProgress = true;
+  let zipPath = null, hashPath = null, scriptPath = null;
+  try {
+    const release = await obterReleaseMaisRecente();
+    if (!release || compararVersoes(release.versao, app.getVersion()) <= 0) return { ok: true, disponivel: false };
+    const tempDir = app.getPath('temp');
+    const suffix = crypto.randomBytes(6).toString('hex');
+    zipPath = path.join(tempDir, `VEN-Desktop-update-${suffix}.zip`);
+    hashPath = path.join(tempDir, `VEN-Desktop-update-${suffix}.sha256`);
+    await baixarArquivo(release.zipUrl, zipPath);
+    await baixarArquivo(release.hashUrl, hashPath);
+    const expected = (fs.readFileSync(hashPath, 'utf8').match(/\b[a-f0-9]{64}\b/i) || [])[0];
+    if (!expected) throw new Error('O arquivo de verificação da atualização é inválido.');
+    const hash = crypto.createHash('sha256');
+    await pipeline(fs.createReadStream(zipPath), hash);
+    if (hash.digest('hex').toLowerCase() !== expected.toLowerCase()) throw new Error('A verificação do download falhou. Nenhum arquivo foi alterado.');
+    try { fs.unlinkSync(hashPath); } catch (_) {} hashPath = null;
+    scriptPath = path.join(tempDir, `VEN-Desktop-updater-${suffix}.ps1`);
+    fs.writeFileSync(scriptPath, scriptAtualizador(), 'utf8');
+    const installDir = base;
+    const child = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath, '-InstallDir', installDir, '-ZipPath', zipPath, '-ProcessId', String(process.pid), '-ExePath', process.execPath], { detached: true, stdio: 'ignore', windowsHide: true });
+    child.on('error', e => { try { fs.unlinkSync(scriptPath); } catch (_) {} });
+    child.unref();
+    return { ok: true, iniciada: true, versao: release.versao };
+  } catch (e) {
+    for (const f of [zipPath, hashPath, scriptPath]) { try { if (f && fs.existsSync(f)) fs.unlinkSync(f); } catch (_) {} }
+    return { ok: false, erro: e.message || 'Não foi possível atualizar o VEN.' };
+  } finally { updateInProgress = false; }
+}
+ipcMain.handle('atualizador:verificar', async () => { try { return await verificarAtualizacao(); } catch (e) { return { ok: false, erro: e.message }; } });
+ipcMain.handle('atualizador:instalar', async () => {
+  try {
+    const r = await instalarAtualizacao();
+    if (r.ok && r.iniciada) {
+      await dialog.showMessageBox(janelaPrincipal, { type: 'info', title: 'Atualização do VEN', message: `A versão ${r.versao} foi baixada e verificada. O VEN será fechado e reaberto para concluir a atualização.`, buttons: ['OK'] });
+      app.quit();
+    }
+    return r;
+  } catch (e) { return { ok: false, erro: e.message }; }
+});
+
+
+app.whenReady().then(() => {
+  criarJanela();
+  setTimeout(async () => {
+    try {
+      const u = await verificarAtualizacao();
+      if (!u.ok || !u.disponivel || !janelaPrincipal || janelaPrincipal.isDestroyed()) return;
+      const choice = await dialog.showMessageBox(janelaPrincipal, { type: 'info', title: 'Atualização do VEN disponível', message: `Há uma nova versão do VEN (${u.versao}).`, detail: 'Deseja baixar e instalar agora? Seus dados e configurações locais serão preservados.', buttons: ['Atualizar agora', 'Depois'], defaultId: 0, cancelId: 1, noLink: true });
+      if (choice.response === 0) {
+        const r = await instalarAtualizacao();
+        if (r.ok && r.iniciada) { await dialog.showMessageBox(janelaPrincipal, { type: 'info', title: 'Atualização do VEN', message: `A versão ${r.versao} foi baixada e verificada. O VEN será fechado e reaberto para concluir a atualização.`, buttons: ['OK'] }); app.quit(); }
+        else if (!r.ok) await dialog.showMessageBox(janelaPrincipal, { type: 'error', title: 'Atualização do VEN', message: r.erro || 'Não foi possível atualizar.' });
+      }
+    } catch (_) { /* A falha de rede não impede o uso normal do VEN. */ }
+  }, 6000);
+});
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

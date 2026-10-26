@@ -119,6 +119,22 @@ async function ligarDados() {
   try { const i = await window.venDesktop.dadosInfo(), d = dados(); $('#dadosInfo').innerHTML = `<div><span>Versão do VEN</span><b>${esc(i.versao)}</b></div><div><span>Pasta de dados</span><b class="quebra">${esc(i.pasta)}</b></div><div><span>Registros</span><b>${d.vendas.length} vendas · ${d.clientes.length} clientes · ${d.produtos.length} produtos · ${d.pagar.length} contas</b></div>`; } catch (_) { }
 }
 $('#btnAbrirTopo').onclick = abrir; $('#btnPaleta').onclick = paleta;
+$('#btnAtualizar').onclick = async () => {
+  const b = $('#btnAtualizar'); b.disabled = true;
+  try {
+    toast('Verificando atualizações do VEN…');
+    const r = await window.venDesktop.verificarAtualizacao();
+    if (!r.ok) return toast(r.erro || 'Não foi possível verificar atualizações.', 'erro');
+    if (!r.disponivel) return toast('O VEN já está atualizado.');
+    const sim = confirmar('Nova versão disponível', `A versão ${r.versao} está disponível. Deseja baixar e instalar agora? Os dados da loja serão preservados.`, async () => {
+      toast('Baixando e verificando a atualização…');
+      const x = await window.venDesktop.instalarAtualizacao();
+      if (!x.ok) toast(x.erro || 'Não foi possível atualizar o VEN.', 'erro');
+      else if (!x.iniciada) toast('O VEN já está atualizado.');
+    }, 'Atualizar');
+  } catch (e) { toast(e.message || 'Falha ao verificar atualizações.', 'erro'); }
+  finally { b.disabled = false; }
+};
 (async () => {
   await carregarConfig();
   try { const r = await window.venDesktop.carregarSalvo(); if (r.ok && r.dados) { backup = r.dados; origem = 'Último aberto'; } else if (r.ok === false) toast(r.erro, 'erro'); } catch (_) { }

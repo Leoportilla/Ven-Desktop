@@ -1,8 +1,16 @@
 name: Gerar VEN Desktop (pasta portátil)
+
 on:
   push:
     branches: [main]
+    tags: ['v*']
+  release:
+    types: [published]
   workflow_dispatch:
+
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -16,7 +24,23 @@ jobs:
       - name: Compactar pasta portátil
         shell: pwsh
         run: Compress-Archive -Path dist\win-unpacked\* -DestinationPath VEN-Desktop-pasta-portatil.zip
+      - name: Gerar SHA-256
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash VEN-Desktop-pasta-portatil.zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  VEN-Desktop-pasta-portatil.zip" | Set-Content -Path VEN-Desktop-pasta-portatil.zip.sha256 -NoNewline -Encoding ascii
       - uses: actions/upload-artifact@v4
         with:
           name: VEN-Desktop-pasta-portatil
-          path: VEN-Desktop-pasta-portatil.zip
+          path: |
+            VEN-Desktop-pasta-portatil.zip
+            VEN-Desktop-pasta-portatil.zip.sha256
+      - name: Publicar GitHub Release para atualização automática
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: VEN Desktop ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            VEN-Desktop-pasta-portatil.zip
+            VEN-Desktop-pasta-portatil.zip.sha256
