@@ -42,3 +42,8 @@ O workflow do GitHub Actions gera o ZIP portátil para teste a cada push à `mai
 ## Leitura de fotos de boletos (OCR)
 
 Depende do pacote opcional `tesseract.js`. Se não estiver disponível, o VEN avisa e permite digitar o código.
+
+
+## Atualização 0.5.4
+- Painel inicial com tamanhos mais confortáveis, evitando reduzir excessivamente os cartões.
+- Botão “Imprimir pedido” no caixa imprime um orçamento temporário sem salvar pedido ou finalizar venda.

@@ -20,6 +20,7 @@ function htmlDocumento(doc, formato) {
   const logo = c.mostrarLogo && imgSegura(e.logo) ? `<img class="logo" src="${esc(e.logo)}" alt="">` : '';
   const dadosEmp = c.mostrarEmpresa ? [razao, e.cnpj ? 'CPF/CNPJ ' + esc(docBR(e.cnpj)) : '', esc(e.end || ''), esc([e.telefone, e.email].filter(Boolean).join(' · '))].filter(Boolean).map(x => `<div>${x}</div>`).join('') : '';
   const titulo = doc.tipo === 'orcamento' ? 'ORÇAMENTO' : 'COMPROVANTE DE VENDA';
+  const identificador = Number(doc.numero) > 0 ? ' Nº ' + pad4(doc.numero) : '';
   const qtd = q => { const n = Number(q) || 0; return Number.isInteger(n) ? String(n) : n.toLocaleString('pt-BR', { maximumFractionDigits: 3 }); };
   const cli = doc.cliente && doc.cliente.nome ? `<div class="bloco"><b>Cliente:</b> ${esc(doc.cliente.nome)}${doc.cliente.doc ? '<br>' + esc(docBR(doc.cliente.doc)) : ''}${doc.cliente.telefone ? '<br>' + esc(doc.cliente.telefone) : ''}${enderecoCliente(doc.cliente) && !termico ? '<br>' + esc(enderecoCliente(doc.cliente)) : ''}</div>` : '';
   const linhasItens = termico
@@ -52,7 +53,7 @@ function htmlDocumento(doc, formato) {
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>${esc(titulo)} ${pad4(doc.numero)}</title><style>${css}</style></head><body>
   <div class="topo">${logo}<div class="nome">${nomeEmp}</div>${dadosEmp}</div>
   <div class="sep"></div>
-  <div class="tit">${titulo} Nº ${pad4(doc.numero)}</div>
+  <div class="tit">${titulo}${identificador}</div>
   <div class="meta">${dataBR(String(doc.data).slice(0, 10))} ${horaBR(doc.data)}</div>
   ${cli}
   <div class="sep"></div>

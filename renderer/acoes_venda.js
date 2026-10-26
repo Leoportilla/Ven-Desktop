@@ -34,7 +34,7 @@ function renderPdvLado() {
     <input class="cpreco" data-i="${n}" data-c="p" value="${esc(moeda(i.p))}" inputmode="decimal" aria-label="Preço unitário"><b class="ctot" id="pdvT${n}">${brl((Number(i.q) || 0) * (Number(i.p) || 0))}</b><button class="x" data-rm="${n}" aria-label="Remover">${ic('x')}</button></div>`).join('') : `<div class="vazio-bloco">${ic('cart')}<b>Carrinho vazio</b><small>Clique em um produto ou leia o código de barras.</small></div>`}</div>
   <div class="pdv-rodape"><div class="pdv-desc"><span>Desconto</span><input id="pdvDesc" value="${esc(pdv.desc || '')}" inputmode="decimal" placeholder="0"><select id="pdvTipo"><option value="%" ${pdv.tipo === '%' ? 'selected' : ''}>%</option><option value="R$" ${pdv.tipo !== '%' ? 'selected' : ''}>R$</option></select></div>
   <div class="linha-tot"><span>Subtotal</span><b id="pdvSub">${brl(t.sub)}</b></div><div class="linha-tot grande"><span>Total</span><b id="pdvTotal">${brl(t.total)}</b></div>
-  <div class="pdv-acoes"><button class="btn" data-act="pdvSalvar">${ic('save')}Salvar pedido<kbd>F8</kbd></button><button class="btn pri" data-act="pdvFechar" ${pdv.itens.length ? '' : 'disabled'}>${ic('check')}Cobrar<kbd>F9</kbd></button></div></div>`;
+  <div class="pdv-acoes pdv-acoes-tres"><button class="btn" data-act="pdvImprimir" ${pdv.itens.length ? '' : 'disabled'}>${ic('print')}Imprimir pedido</button><button class="btn" data-act="pdvSalvar">${ic('save')}Salvar pedido<kbd>F8</kbd></button><button class="btn pri" data-act="pdvFechar" ${pdv.itens.length ? '' : 'disabled'}>${ic('check')}Cobrar<kbd>F9</kbd></button></div></div>`;
 }
 function atualizaTotaisPdv() { const t = totaisItens(pdv.itens, pdv.desc, pdv.tipo); $('#pdvSub').textContent = brl(t.sub); $('#pdvTotal').textContent = brl(t.total); pdv.itens.forEach((i, n) => { const e = $('#pdvT' + n); if (e) e.textContent = brl((Number(i.q) || 0) * (Number(i.p) || 0)); }); }
 function ligarPdv() {
@@ -52,13 +52,20 @@ function ligarPdv() {
     const q = e.target.closest('[data-q]'); if (q) { const i = pdv.itens[+q.dataset.q]; i.q = Math.max(0, (Number(i.q) || 0) + (+q.dataset.dq)); if (i.q <= 0) pdv.itens.splice(+q.dataset.q, 1); renderPdvLado(); return; }
     const r = e.target.closest('[data-rm]'); if (r) { pdv.itens.splice(+r.dataset.rm, 1); renderPdvLado(); return; }
     const ac = e.target.closest('[data-act]'); if (!ac) return; const k = ac.dataset.act;
-    if (k === 'pdvLimpar') { pdv.itens = []; pdv.desc = 0; renderPdvLado(); } else if (k === 'pdvSalvar') salvarOrcamento(false); else if (k === 'pdvFechar') salvarOrcamento(true);
+    if (k === 'pdvLimpar') { pdv.itens = []; pdv.desc = 0; renderPdvLado(); } else if (k === 'pdvImprimir') imprimirRascunhoPdv(); else if (k === 'pdvSalvar') salvarOrcamento(false); else if (k === 'pdvFechar') salvarOrcamento(true);
   };
   conteudo.oninput = e => {
     const t = e.target; if (t.id === 'pdvCli') { pdv.cli = t.value; return; } if (t.id === 'pdvDesc') { pdv.desc = numeroBR(t.value); atualizaTotaisPdv(); return; }
     if (t.dataset && t.dataset.i != null) { const i = pdv.itens[+t.dataset.i]; i[t.dataset.c] = numeroBR(t.value); atualizaTotaisPdv(); }
   };
   conteudo.onchange = e => { if (e.target.id === 'pdvTipo') { pdv.tipo = e.target.value; atualizaTotaisPdv(); } if (e.target.classList.contains('cpreco')) e.target.value = moeda(numeroBR(e.target.value)); };
+}
+function imprimirRascunhoPdv() {
+  if (!pdv || !pdv.itens.length) return toast('Adicione produtos antes de imprimir o pedido.', 'erro');
+  if (pdv.itens.some(i => !(Number(i.q) > 0))) return toast('Há item com quantidade zero.', 'erro');
+  const s = snapshotPdv();
+  const doc = { tipo: 'orcamento', numero: 0, data: new Date().toISOString(), empresa: empresa(), cliente: dados().clientes.find(c => norm(c.nome) === norm(s.cli)) || { nome: s.cli || '' }, itens: s.itens, subtotal: s.subtotal, desconto: s.desconto, total: s.total, pagamentos: [], recebido: 0, saldo: 0, vencimento: '', obs: s.obs || '', rodape: true };
+  imprimirDoc(doc);
 }
 function snapshotPdv() { const t = totaisItens(pdv.itens, pdv.desc, pdv.tipo); return { cli: pdv.cli.trim(), desc: pdv.desc, tipo: pdv.tipo, obs: pdv.obs, itens: pdv.itens.map(i => ({ ...i, q: Number(i.q) || 0, p: Number(i.p) || 0 })), subtotal: t.sub, desconto: t.d, total: t.total, tipoRegistro: 'orcamento' }; }
 function salvarOrcamento(cobrar) {
