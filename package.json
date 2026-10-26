@@ -1,6 +1,6 @@
 {
   "name": "ven-desktop",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "VEN para computador (Windows)",
   "main": "main.js",
   "author": "VEN",
@@ -13,18 +13,25 @@
     "electron": "^33.2.0",
     "electron-builder": "^25.1.8"
   },
+  "optionalDependencies": {
+    "tesseract.js": ">=5.1.0",
+    "@tesseract.js-data/por": "*"
+  },
   "build": {
     "appId": "br.com.ven.desktop",
     "productName": "VEN",
+    "asar": false,
     "files": [
       "main.js",
       "preload.js",
+      "servicos.js",
       "renderer/**/*"
     ],
     "win": {
       "target": [
         "dir"
       ],
+      "icon": "build/icon.ico",
       "artifactName": "VEN-Desktop-${version}-portable.exe"
     }
   }

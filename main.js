@@ -4,6 +4,8 @@ const fs = require('fs');
 const http = require('http');
 const crypto = require('crypto');
 const { URL } = require('url');
+const os = require('os');
+const servicos = require('./servicos');
 
 // Modo portable: guarda os dados em "dados" ao lado do .exe (PORTABLE_EXECUTABLE_DIR é definido pelo electron-builder).
 const base = process.env.PORTABLE_EXECUTABLE_DIR || (app.isPackaged ? path.dirname(process.execPath) : __dirname);
@@ -14,6 +16,7 @@ const GOOGLE_CLIENT_ID = '62502411129-11fe7v3gstvi2a8dcet7fej64r0r171d.apps.goog
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
 try { fs.mkdirSync(pastaDados, { recursive: true }); } catch (_) {}
 let oauthServer = null;
+let janelaPrincipal = null;
 function guardarToken(token) {
   if (!safeStorage.isEncryptionAvailable()) throw new Error('O Windows não disponibilizou armazenamento seguro para o token.');
   fs.writeFileSync(arquivoToken, safeStorage.encryptString(JSON.stringify(token)));
@@ -81,10 +84,11 @@ function validar(texto) {
 
 function criarJanela() {
   const win = new BrowserWindow({
-    width: 1280, height: 800, minWidth: 980, minHeight: 600, title: 'VEN', backgroundColor: '#0f1216',
+    width: 1280, height: 800, minWidth: 980, minHeight: 600, title: 'VEN', backgroundColor: '#0d1217', icon: path.join(__dirname, 'renderer', 'ven-logo.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
   Menu.setApplicationMenu(null);
+  janelaPrincipal = win;
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   win.webContents.setWindowOpenHandler(({ url }) => { if (/^https:/.test(url)) shell.openExternal(url); return { action: 'deny' }; });
 }
@@ -133,6 +137,110 @@ ipcMain.handle('drive:sincronizar', async () => {
   } catch (e) { return { ok: false, erro: e.message }; }
 });
 ipcMain.handle('imprimir', async (e) => new Promise(res => { e.sender.print({ printBackground: true }, ok => res({ ok })); }));
+
+
+/* ============ Configurações locais (por computador, fora do backup) ============ */
+const arquivoConfig = path.join(pastaDados, 'config.json');
+const CONFIG_PADRAO = { tema: 'auto', impressao: { formato: '80', impressora: '', direto: false, rodape: 'Obrigado pela preferência!', mostrarLogo: true, mostrarEmpresa: true, copias: 1 } };
+function lerConfig() {
+  try { const c = JSON.parse(fs.readFileSync(arquivoConfig, 'utf8')); return { ...CONFIG_PADRAO, ...c, impressao: { ...CONFIG_PADRAO.impressao, ...(c.impressao || {}) } }; }
+  catch (_) { return JSON.parse(JSON.stringify(CONFIG_PADRAO)); }
+}
+ipcMain.handle('config:ler', async () => lerConfig());
+ipcMain.handle('config:gravar', async (_e, c) => {
+  try { const atual = lerConfig(); const nova = { ...atual, ...c, impressao: { ...atual.impressao, ...((c && c.impressao) || {}) } }; fs.writeFileSync(arquivoConfig, JSON.stringify(nova, null, 1), 'utf8'); return { ok: true, config: nova }; }
+  catch (e) { return { ok: false, erro: e.message }; }
+});
+ipcMain.handle('dados:info', async () => ({ pasta: pastaDados, arquivo: arquivoBackup, versao: app.getVersion() }));
+ipcMain.handle('dados:abrirPasta', async () => { const r = await shell.openPath(pastaDados); return { ok: !r, erro: r || '' }; });
+
+/* ============ Consultas públicas (CNPJ, CEP, NCM) ============ */
+const erroConsulta = e => { const m = e && e.message; return ['nao-encontrado', 'invalido', 'curto'].includes(m) ? m : 'indisponivel'; };
+ipcMain.handle('consulta:cnpj', async (_e, v) => { try { return { ok: true, dados: await servicos.consultarCnpj(v) }; } catch (e) { return { ok: false, erro: erroConsulta(e) }; } });
+ipcMain.handle('consulta:cep', async (_e, v) => { try { return { ok: true, dados: await servicos.consultarCep(v) }; } catch (e) { return { ok: false, erro: erroConsulta(e) }; } });
+ipcMain.handle('consulta:ncm', async (_e, v) => { try { return { ok: true, dados: await servicos.buscarNcm(v) }; } catch (e) { return { ok: false, erro: erroConsulta(e) }; } });
+
+/* ============ Abrir links externos permitidos (WhatsApp, Waze, e-mail) ============ */
+const EXTERNOS = /^(https:\/\/(wa\.me|api\.whatsapp\.com|waze\.com|www\.waze\.com|portalunico\.siscomex\.gov\.br)\/|mailto:)/i;
+ipcMain.handle('externo:abrir', async (_e, url) => { if (!EXTERNOS.test(String(url || ''))) return { ok: false }; try { await shell.openExternal(String(url)); return { ok: true }; } catch (_) { return { ok: false }; } });
+
+/* ============ Impressão (cupom 58/80 mm ou A4) e PDF ============ */
+const PX_MM = 96 / 25.4;
+const larguraMm = f => (f === '58' ? 58 : f === '80' ? 80 : 210);
+async function janelaDeImpressao(html, formato) {
+  const tmp = path.join(os.tmpdir(), 'ven-imp-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7) + '.html');
+  fs.writeFileSync(tmp, html, 'utf8');
+  const w = new BrowserWindow({ show: false, width: Math.round(larguraMm(formato) * PX_MM), height: 900, useContentSize: true, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false } });
+  w.webContents.setWindowOpenHandler(() => ({ action: 'deny' })); w.webContents.on('will-navigate', ev => ev.preventDefault());
+  await w.loadFile(tmp);
+  const altura = await w.webContents.executeJavaScript('Math.ceil(Math.max(document.documentElement.scrollHeight, document.body.scrollHeight))');
+  const limpar = () => { try { w.destroy(); } catch (_) {} try { fs.unlinkSync(tmp); } catch (_) {} };
+  return { w, altura, limpar };
+}
+ipcMain.handle('impressoras:listar', async () => {
+  try { const l = await (janelaPrincipal || BrowserWindow.getAllWindows()[0]).webContents.getPrintersAsync(); return { ok: true, impressoras: l.map(x => ({ nome: x.name, descricao: x.displayName || x.name, padrao: !!x.isDefault })) }; }
+  catch (e) { return { ok: false, erro: e.message, impressoras: [] }; }
+});
+ipcMain.handle('imprimir:html', async (_e, o) => {
+  let j; try {
+    o = o || {}; const f = ['58', '80', 'a4'].includes(o.formato) ? o.formato : '80';
+    j = await janelaDeImpressao(String(o.html || ''), f);
+    const opc = { silent: !!o.silencioso, printBackground: true, margins: { marginType: 'none' }, copies: Math.max(1, Math.min(5, Number(o.copias) || 1)) };
+    if (o.impressora) opc.deviceName = String(o.impressora);
+    opc.pageSize = f === 'a4' ? 'A4' : { width: larguraMm(f) * 1000, height: Math.max(40000, Math.ceil((j.altura + 24) / PX_MM * 1000)) };
+    const r = await new Promise(res => j.w.webContents.print(opc, (ok, motivo) => res({ ok, motivo })));
+    return r.ok ? { ok: true } : { ok: false, erro: r.motivo === 'cancelled' ? 'cancelado' : (r.motivo || 'Falha ao imprimir.') };
+  } catch (e) { return { ok: false, erro: e.message }; } finally { j && j.limpar(); }
+});
+ipcMain.handle('imprimir:pdf', async (_e, o) => {
+  let j; try {
+    o = o || {}; const f = ['58', '80', 'a4'].includes(o.formato) ? o.formato : 'a4';
+    const r = await dialog.showSaveDialog({ title: 'Salvar PDF', defaultPath: String(o.nome || 'VEN.pdf').replace(/[\\/:*?"<>|]/g, '-'), filters: [{ name: 'PDF', extensions: ['pdf'] }] });
+    if (r.canceled || !r.filePath) return { ok: true, salvo: false };
+    j = await janelaDeImpressao(String(o.html || ''), f);
+    const pageSize = f === 'a4' ? 'A4' : { width: larguraMm(f) / 25.4, height: Math.max(2, (j.altura + 24) / 96) };
+    const buf = await j.w.webContents.printToPDF({ printBackground: true, pageSize, margins: { marginType: 'none' } });
+    fs.writeFileSync(r.filePath, buf); return { ok: true, salvo: true, caminho: r.filePath };
+  } catch (e) { return { ok: false, erro: e.message }; } finally { j && j.limpar(); }
+});
+ipcMain.handle('arquivo:salvarTexto', async (_e, o) => {
+  try {
+    o = o || {}; const ext = String(o.extensao || 'csv').replace(/[^a-z0-9]/gi, '');
+    const r = await dialog.showSaveDialog({ title: 'Salvar arquivo', defaultPath: String(o.nome || 'VEN.' + ext).replace(/[\\/:*?"<>|]/g, '-'), filters: [{ name: ext.toUpperCase(), extensions: [ext] }] });
+    if (r.canceled || !r.filePath) return { ok: true, salvo: false };
+    fs.writeFileSync(r.filePath, (ext === 'csv' ? '﻿' : '') + String(o.texto || ''), 'utf8'); return { ok: true, salvo: true };
+  } catch (e) { return { ok: false, erro: e.message }; }
+});
+
+/* ============ Leitura de fotos de contas (OCR no computador) ============ */
+let ocrWorker = null, ocrPronto = null;
+function pastaIdiomaOcr() {
+  try {
+    const raiz = path.dirname(require.resolve('@tesseract.js-data/por/package.json'));
+    const cand = ['4.0.0_best_int', '4.0.0_fast_int', '4.0.0'].map(n => path.join(raiz, n));
+    for (const c of cand) if (fs.existsSync(path.join(c, 'por.traineddata.gz'))) return c;
+    for (const d of fs.readdirSync(raiz)) { const c = path.join(raiz, d); if (fs.existsSync(path.join(c, 'por.traineddata.gz'))) return c; }
+  } catch (_) {}
+  return null;
+}
+async function obterOcr() {
+  if (ocrWorker) return ocrWorker;
+  if (!ocrPronto) ocrPronto = (async () => {
+    let T; try { T = require('tesseract.js'); } catch (_) { throw new Error('O leitor de fotos não está instalado nesta versão. Use o PDF da conta ou digite o código.'); }
+    const opcoes = { cachePath: path.join(pastaDados, 'ocr-cache'), logger: () => {} };
+    const lp = pastaIdiomaOcr(); if (lp) { opcoes.langPath = lp; opcoes.gzip = true; }
+    ocrWorker = await T.createWorker('por', 1, opcoes); return ocrWorker;
+  })();
+  try { return await ocrPronto; } catch (e) { ocrPronto = null; throw e; }
+}
+ipcMain.handle('ocr:imagem', async (_e, dataUrl) => {
+  try {
+    const m = /^data:image\/(png|jpe?g|webp|bmp);base64,(.+)$/i.exec(String(dataUrl || '')); if (!m) throw new Error('Imagem inválida.');
+    const w = await obterOcr(); const r = await w.recognize(Buffer.from(m[2], 'base64'));
+    return { ok: true, texto: (r && r.data && r.data.text) || '' };
+  } catch (e) { return { ok: false, erro: e.message || 'Falha na leitura da foto.' }; }
+});
+app.on('before-quit', () => { try { ocrWorker && ocrWorker.terminate(); } catch (_) {} });
 
 app.whenReady().then(criarJanela);
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

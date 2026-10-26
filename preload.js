@@ -1,11 +1,26 @@
 const { contextBridge, ipcRenderer } = require('electron');
+const inv = (c) => (...a) => ipcRenderer.invoke(c, ...a);
 contextBridge.exposeInMainWorld('venDesktop', {
-  carregarSalvo: () => ipcRenderer.invoke('backup:carregarSalvo'),
-  abrirBackup: () => ipcRenderer.invoke('backup:abrir'),
-  gravar: (texto) => ipcRenderer.invoke('backup:gravar', texto),
-  imprimir: () => ipcRenderer.invoke('imprimir'),
-  salvarCopia: (texto) => ipcRenderer.invoke('backup:salvarCopia', texto),
-  driveConectar: (segredo) => ipcRenderer.invoke('drive:conectar', segredo),
-  driveEstado: () => ipcRenderer.invoke('drive:estado'),
-  driveSincronizar: () => ipcRenderer.invoke('drive:sincronizar')
+  carregarSalvo: inv('backup:carregarSalvo'),
+  abrirBackup: inv('backup:abrir'),
+  gravar: inv('backup:gravar'),
+  salvarCopia: inv('backup:salvarCopia'),
+  imprimir: inv('imprimir'),
+  imprimirHtml: inv('imprimir:html'),
+  salvarPdf: inv('imprimir:pdf'),
+  salvarTexto: inv('arquivo:salvarTexto'),
+  impressoras: inv('impressoras:listar'),
+  configLer: inv('config:ler'),
+  configGravar: inv('config:gravar'),
+  dadosInfo: inv('dados:info'),
+  abrirPastaDados: inv('dados:abrirPasta'),
+  consultarCnpj: inv('consulta:cnpj'),
+  consultarCep: inv('consulta:cep'),
+  buscarNcm: inv('consulta:ncm'),
+  abrirExterno: inv('externo:abrir'),
+  ocrImagem: inv('ocr:imagem'),
+  driveConectar: inv('drive:conectar'),
+  driveEstado: inv('drive:estado'),
+  driveDesconectar: inv('drive:desconectar'),
+  driveSincronizar: inv('drive:sincronizar')
 });
