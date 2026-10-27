@@ -172,10 +172,10 @@ function receberVenda(num) {
   });
 }
 function desfazerRecebimento(num) {
-  gravarChave('ven_vendas', dados().vendas.map(x => {
-    if (Number(x.numero) !== Number(num)) return x; const y = { ...x }, p = arr(y.pagamentos).slice(); let val; if (p.length) { val = Number(p.pop().valor) || 0; y.pagamentos = p; } else val = Number(y.recebido) || 0;
-    y.recebido = Math.max(0, r2((Number(y.recebido) || 0) - val)); y.status = y.recebido > 0 ? 'partial' : 'pending'; delete y.pagoEm; return y;
-  })); toast('Último recebimento desfeito.'); render();
+  const d = dados(), v = d.vendas.find(x => Number(x.numero) === Number(num)); if (!v) return; const p = arr(v.pagamentos).slice(), ultimo = p.pop(), val = ultimo ? Number(ultimo.valor) || 0 : Number(v.recebido) || 0;
+  gravarChave('ven_vendas', d.vendas.map(x => Number(x.numero) !== Number(num) ? x : (() => { const y = { ...x, pagamentos: p, recebido: Math.max(0, r2((Number(x.recebido) || 0) - val)) }; y.status = y.recebido > 0 ? 'partial' : 'pending'; delete y.pagoEm; return y; })()));
+  if (ultimo && ultimo.parcelaReceberId) gravarChave('ven_receberAvulso', d.avulso.map(x => { if (String(x.id) !== String(ultimo.parcelaReceberId)) return x; const y = { ...x, status: 'pendente' }; delete y.recebidoEm; delete y.valorRecebido; delete y.forma; return y; }));
+  toast('Último recebimento desfeito.'); render();
 }
 function formReceita(id) {
   const l = dados().avulso, c = id ? l.find(x => String(x.id) === String(id)) : null;
@@ -200,10 +200,10 @@ function receberReceita(id) {
   const c = dados().avulso.find(x => String(x.id) === String(id)); if (!c) return;
   modal({
     titulo: 'Receber · ' + c.descricao, icone: 'receber', tamanho: 'sm', corpo: `<div class="fgrid g6">${campo('Valor recebido (R$)', 'vVal', moeda(c.valor), 'data-moeda inputmode="decimal"', 'c3')}${campo('Data', 'vData', hojeISO(), 'type="date" max="' + hojeISO() + '"', 'c3')}${selecao('Forma', 'vForma', FORMAS_NOMES, 'PIX', 'c6')}</div>`,
-    botoes: [{ t: 'Cancelar' }, { t: 'Registrar', pri: true, fn: el => { const v = r2(numeroBR(V(el, 'vVal'))), iso = V(el, 'vData'); if (!(v > 0)) { toast('Informe um valor maior que zero.', 'erro'); return false; } if (!iso) { toast('Data inválida.', 'erro'); return false; } gravarChave('ven_receberAvulso', dados().avulso.map(x => String(x.id) === String(id) ? { ...x, status: 'recebida', recebidoEm: iso, valorRecebido: v, forma: V(el, 'vForma') } : x)); toast('Recebimento registrado.'); render(); } }]
+    botoes: [{ t: 'Cancelar' }, { t: 'Registrar', pri: true, fn: el => { const v = r2(numeroBR(V(el, 'vVal'))), iso = V(el, 'vData'); if (!(v > 0)) { toast('Informe um valor maior que zero.', 'erro'); return false; } if (!iso) { toast('Data inválida.', 'erro'); return false; } if (c.vendaNumero && Math.abs(v - Number(c.valor)) > 0.009) { toast('Para manter o parcelamento correto, registre o valor integral desta parcela.', 'erro'); return false; } const dd = dados(), forma = V(el, 'vForma'); gravarChave('ven_receberAvulso', dd.avulso.map(x => String(x.id) === String(id) ? { ...x, status: 'recebida', recebidoEm: iso, valorRecebido: v, forma } : x)); if (c.vendaNumero) gravarChave('ven_vendas', dd.vendas.map(x => { if (Number(x.numero) !== Number(c.vendaNumero)) return x; const recebido = r2((Number(x.recebido) || 0) + v), y = { ...x, recebido, pagamentos: arr(x.pagamentos).concat([{ data: iso + 'T12:00:00', valor: v, forma, parcelaReceberId: c.id }]), status: recebido >= Number(x.total) - 0.009 ? 'paid' : 'partial' }; if (y.status === 'paid') y.pagoEm = iso + 'T12:00:00'; return y; })); toast('Recebimento registrado.'); render(); } }]
   });
 }
-function desfazerReceita(id) { gravarChave('ven_receberAvulso', dados().avulso.map(x => { if (String(x.id) !== String(id)) return x; const y = { ...x, status: 'pendente' }; delete y.recebidoEm; delete y.valorRecebido; delete y.forma; return y; })); toast('Recebimento desfeito.'); render(); }
+function desfazerReceita(id) { const d = dados(), c = d.avulso.find(x => String(x.id) === String(id)); gravarChave('ven_receberAvulso', d.avulso.map(x => { if (String(x.id) !== String(id)) return x; const y = { ...x, status: 'pendente' }; delete y.recebidoEm; delete y.valorRecebido; delete y.forma; return y; })); if (c && c.vendaNumero) gravarChave('ven_vendas', d.vendas.map(x => { if (Number(x.numero) !== Number(c.vendaNumero)) return x; const y = { ...x, recebido: Math.max(0, r2((Number(x.recebido) || 0) - (Number(c.valorRecebido) || Number(c.valor) || 0))) }; y.pagamentos = arr(y.pagamentos).filter(p => String(p.parcelaReceberId) !== String(c.id)); y.status = y.recebido > 0 ? 'partial' : 'pending'; delete y.pagoEm; return y; })); toast('Recebimento desfeito.'); render(); }
 function excluirReceita(id) {
   const c = dados().avulso.find(x => String(x.id) === String(id)); if (!c) return;
   const serie = c.serie ? dados().avulso.filter(x => x.serie && x.serie.id === c.serie.id && String(x.id) !== String(id) && x.status !== 'recebida' && x.vencimento >= c.vencimento).length : 0;

@@ -3,15 +3,15 @@
 let pdv = null;
 function abrirPdv(numOrc, nomeCliente) {
   const d = dados(), o = numOrc ? d.pedidos.find(x => Number(x.numero) === Number(numOrc)) : null;
-  pdv = { view: 'grade', edit: o ? o.numero : null, cli: o ? o.cli || '' : (nomeCliente || ''), desc: o ? o.desc || 0 : 0, tipo: o ? o.tipo || '%' : '%', obs: o ? o.obs || '' : '', itens: o ? arr(o.itens).map(i => ({ ...i })) : [], cat: 'todos' };
+  pdv = { view: 'lista', edit: o ? o.numero : null, cli: o ? o.cli || '' : (nomeCliente || ''), desc: o ? o.desc || 0 : 0, tipo: o ? o.tipo || '%' : '%', obs: o ? o.obs || '' : '', itens: o ? arr(o.itens).map(i => ({ ...i })) : [], cat: 'todos' };
   irPara('pdv');
 }
 function vPdv(d) {
   const cats = ['todos', 'produto', 'serviço'];
   return `<div class="pdv"><section class="pdv-esq"><div class="pdv-topo"><label class="busca grande">${ic('search')}<input id="pdvBusca" placeholder="Buscar produto ou serviço, ou leia o código de barras" autocomplete="off"></label>
     <div class="seg" id="pdvCat">${cats.map(c => `<button data-cat="${c}" class="${pdv.cat === c ? 'on' : ''}">${c === 'todos' ? 'Tudo' : c === 'produto' ? 'Produtos' : 'Serviços'}</button>`).join('')}</div><div class="pdv-view" id="pdvView"><button type="button" data-view="grade" class="${pdv.view !== 'lista' ? 'on' : ''}" title="Cartões com fotos">Fotos</button><button type="button" data-view="lista" class="${pdv.view === 'lista' ? 'on' : ''}" title="Lista compacta">Lista</button></div></div>
-    <div id="pdvRes" class="pdv-grade"></div></section>
-    <aside class="pdv-dir"><header><h3>${pdv.edit ? 'Pedido ' + numPed(pdv.edit) : 'Venda atual'}</h3>${pdv.itens.length ? `<button class="btn mini" data-act="pdvLimpar">${ic('trash')}Limpar</button>` : ''}</header><div id="pdvLado"></div></aside></div>`;
+    <div id="pdvRes" class="pdv-grade ${pdv.view === 'lista' ? 'lista' : ''}"></div></section>
+    <aside class="pdv-dir"><header><h3>${pdv.edit ? 'Pedido ' + numPed(pdv.edit) : 'Venda atual'}</h3>${pdv.itens.length ? `<button class="btn mini" data-act="pdvLimpar">${ic('trash')}Limpar pedido</button>` : ''}</header><div id="pdvLado"></div></aside></div>`;
 }
 function pdvResultados() {
   const d = dados(), q = norm($('#pdvBusca') ? $('#pdvBusca').value : '');
@@ -52,7 +52,7 @@ function ligarPdv() {
     const q = e.target.closest('[data-q]'); if (q) { const i = pdv.itens[+q.dataset.q]; i.q = Math.max(0, (Number(i.q) || 0) + (+q.dataset.dq)); if (i.q <= 0) pdv.itens.splice(+q.dataset.q, 1); renderPdvLado(); return; }
     const r = e.target.closest('[data-rm]'); if (r) { pdv.itens.splice(+r.dataset.rm, 1); renderPdvLado(); return; }
     const ac = e.target.closest('[data-act]'); if (!ac) return; const k = ac.dataset.act;
-    if (k === 'pdvLimpar') { pdv.itens = []; pdv.desc = 0; renderPdvLado(); } else if (k === 'pdvImprimir') imprimirRascunhoPdv(); else if (k === 'pdvSalvar') salvarOrcamento(false); else if (k === 'pdvFechar') salvarOrcamento(true);
+    if (k === 'pdvLimpar') { confirmar('Limpar pedido?', 'Todos os itens e o desconto desta venda serão removidos.', () => { pdv.itens = []; pdv.desc = 0; renderPdvLado(); }, 'Limpar', true); } else if (k === 'pdvImprimir') imprimirRascunhoPdv(); else if (k === 'pdvSalvar') salvarOrcamento(false); else if (k === 'pdvFechar') salvarOrcamento(true);
   };
   conteudo.oninput = e => {
     const t = e.target; if (t.id === 'pdvCli') { pdv.cli = t.value; return; } if (t.id === 'pdvDesc') { pdv.desc = numeroBR(t.value); atualizaTotaisPdv(); return; }
@@ -97,10 +97,11 @@ function fecharVendaModal(num) {
       const resumo = () => {
         const s = soma(), falta = r2(total - s), troco = linhas.filter(l => l.forma === 'Dinheiro' && l.entregue > l.valor).reduce((a, l) => a + (l.entregue - l.valor), 0);
         el.querySelector('#pgVencBox').classList.toggle('oculto', falta <= 0.009);
-        R.innerHTML = `<div class="r"><span>Recebido agora</span><b class="pos">${brl(Math.min(s, total))}</b></div>` + (falta > 0.009 ? `<div class="r aviso-r"><span>Fica a receber</span><b class="neg">${brl(falta)}</b></div>` : '') + (falta < -0.009 ? `<div class="r"><span>Passou do total em</span><b class="neg">${brl(-falta)}</b></div>` : '') + (troco > 0 ? `<div class="r"><span>Troco</span><b>${brl(troco)}</b></div>` : '');
+        const boleto = linhas.filter(l => l.forma === 'Boleto').reduce((a, l) => a + (Number(l.valor) || 0), 0), recebido = Math.min(Math.max(0, r2(s - boleto)), total);
+        R.innerHTML = `<div class="r"><span>Total devido</span><b>${brl(total)}</b></div><div class="r"><span>Recebido agora</span><b class="pos">${brl(recebido)}</b></div>` + (boleto > 0 ? `<div class="r"><span>A receber em boleto</span><b>${brl(boleto)}</b></div>` : '') + (falta > 0.009 ? `<div class="r aviso-r"><span>Saldo sem forma definida</span><b class="neg">${brl(falta)}</b></div>` : '') + (falta < -0.009 ? `<div class="r"><span>Pagamento acima do total</span><b class="neg">${brl(-falta)}</b></div>` : '') + (troco > 0 ? `<div class="r"><span>Troco a devolver</span><b>${brl(troco)}</b></div>` : '');
       };
       const desenhar = () => {
-        L.innerHTML = linhas.map((l, n) => { const f = FORMAS.find(x => x.id === l.forma) || FORMAS[0]; return `<div class="pg-linha"><span class="pg-ico">${ic(f.icone)}</span><div class="pg-nome"><b>${esc(f.id)}</b>${l.forma === 'Cartão de crédito' ? `<select data-n="${n}" data-c="parc">${Array.from({ length: 12 }, (_, i) => `<option value="${i + 1}" ${Number(l.parc) === i + 1 ? 'selected' : ''}>${i + 1}x${l.valor > 0 ? ' de ' + brl(l.valor / (i + 1)) : ''}</option>`).join('')}</select>` : ''}</div>
+        L.innerHTML = linhas.map((l, n) => { const f = FORMAS.find(x => x.id === l.forma) || FORMAS[0]; return `<div class="pg-linha"><span class="pg-ico">${ic(f.icone)}</span><div class="pg-nome"><b>${esc(f.id)}</b>${['Cartão de crédito', 'Boleto'].includes(l.forma) ? `<select data-n="${n}" data-c="parc" aria-label="Parcelas do ${esc(l.forma)}">${Array.from({ length: 12 }, (_, i) => `<option value="${i + 1}" ${Number(l.parc) === i + 1 ? 'selected' : ''}>${i + 1}x${l.forma === 'Boleto' ? ` · venc. ${Array.from({ length: i + 1 }, (_, j) => (j + 1) * 30).join('/')} dias` : (l.valor > 0 ? ' de ' + brl(l.valor / (i + 1)) : '')}</option>`).join('')}</select>` : ''}</div>
           <label class="pg-val"><span>Valor</span><input data-n="${n}" data-c="valor" data-moeda inputmode="decimal" value="${moeda(l.valor)}"></label>${l.forma === 'Dinheiro' ? `<label class="pg-val"><span>Cliente deu</span><input data-n="${n}" data-c="entregue" data-moeda inputmode="decimal" placeholder="${moeda(l.valor)}" value="${l.entregue ? moeda(l.entregue) : ''}"></label>` : ''}
           <button type="button" class="x" data-del="${n}" aria-label="Remover" ${linhas.length > 1 ? '' : 'disabled'}>${ic('x')}</button></div>`; }).join('') + (linhas.length ? '' : '<p class="mut">Nenhuma forma escolhida: a venda inteira fica a receber.</p>');
         resumo();
@@ -116,18 +117,21 @@ function fecharVendaModal(num) {
   });
 }
 function registrarVenda(el, o, ex, total, linhas) {
-  const validas = linhas.filter(l => Number(l.valor) > 0), soma = r2(validas.reduce((a, l) => a + Number(l.valor), 0));
+  const validas = linhas.filter(l => Number(l.valor) > 0), boleto = validas.filter(l => l.forma === 'Boleto'), imediato = validas.filter(l => l.forma !== 'Boleto'), soma = r2(validas.reduce((a, l) => a + Number(l.valor), 0)), recebido = r2(imediato.reduce((a, l) => a + Number(l.valor), 0));
   if (soma > total + 0.009) { toast('Os valores somam mais que o total da venda.', 'erro'); return false; }
-  const dt = V(el, 'fData') || hojeISO(), falta = r2(total - soma);
-  if (dt > hojeISO() && soma > 0) { toast('A data da venda com recebimento não pode ser futura.', 'erro'); return false; }
+  const dt = V(el, 'fData') || hojeISO(), falta = r2(total - soma), saldo = r2(total - recebido);
+  if (dt > hojeISO() && recebido > 0) { toast('A data da venda com recebimento não pode ser futura.', 'erro'); return false; }
   const d = dados(), c = d.clientes.find(x => norm(x.nome) === norm(o.cli));
-  if (falta > 0.009 && !o.cli) { toast('Para deixar valor a receber, informe o cliente no pedido.', 'erro'); return false; }
-  const venc = falta > 0.009 ? V(el, 'fVenc') : '', n = ex ? Number(ex.numero) : proxNum('ven_ultimoNumeroVenda'); if (!ex) gravarChave('ven_ultimoNumeroVenda', n);
-  const pagamentos = validas.map(l => ({ data: dt + 'T12:00:00', valor: r2(Number(l.valor)), forma: rotuloForma(l.forma, l.parc), ...(l.forma === 'Dinheiro' && l.entregue > l.valor ? { entregue: r2(l.entregue), troco: r2(l.entregue - l.valor) } : {}) }));
-  const formas = [...new Set(validas.map(l => l.forma))], st = falta <= 0.009 ? 'paid' : (soma > 0 ? 'partial' : 'pending');
-  const v = { ...(ex || {}), numero: n, orcamentoNumero: o.numero, data: dt + 'T12:00:00', vencimento: venc || '', clienteId: c ? c.id : '', clienteNome: c ? c.nome : (o.cli || ''), clienteSnapshot: c ? { ...c } : null, pagamento: formas.length ? (formas.length > 1 ? formas.join(' + ') : pagamentos[0].forma) : 'A receber', status: st, recebido: Math.min(soma, total), total, pagamentos, termos: '', observacoes: V(el, 'fObs').trim(), itens: arr(o.itens).map(i => ({ ...i })), empresaSnapshot: lerChave('ven_empresa', {}) };
+  if (saldo > 0.009 && !o.cli) { toast('Para deixar valor a receber, informe o cliente no pedido.', 'erro'); return false; }
+  const venc = saldo > 0.009 ? V(el, 'fVenc') : '', n = ex ? Number(ex.numero) : proxNum('ven_ultimoNumeroVenda'); if (!ex) gravarChave('ven_ultimoNumeroVenda', n);
+  const pagamentos = imediato.map(l => ({ data: dt + 'T12:00:00', valor: r2(Number(l.valor)), forma: rotuloForma(l.forma, l.parc), ...(l.forma === 'Dinheiro' && l.entregue > l.valor ? { entregue: r2(l.entregue), troco: r2(l.entregue - l.valor) } : {}) }));
+  const formas = [...new Set(validas.map(l => l.forma))], st = saldo <= 0.009 ? 'paid' : (recebido > 0 ? 'partial' : 'pending');
+  const v = { ...(ex || {}), numero: n, orcamentoNumero: o.numero, data: dt + 'T12:00:00', vencimento: venc || '', clienteId: c ? c.id : '', clienteNome: c ? c.nome : (o.cli || ''), clienteSnapshot: c ? { ...c } : null, pagamento: formas.length ? (formas.length > 1 ? formas.join(' + ') : rotuloForma(formas[0], validas[0].parc)) : 'A receber', status: st, recebido: recebido, total, pagamentos, termos: '', observacoes: V(el, 'fObs').trim(), itens: arr(o.itens).map(i => ({ ...i })), empresaSnapshot: lerChave('ven_empresa', {}) };
   if (st === 'paid') v.pagoEm = dt + 'T12:00:00'; else delete v.pagoEm;
   gravarChave('ven_vendas', ex ? d.vendas.map(x => Number(x.numero) === n ? v : x) : [v, ...d.vendas]);
+  const avulso = d.avulso.filter(x => Number(x.vendaNumero) !== n), parcelas = [];
+  boleto.forEach(l => { const qtd = Math.max(1, Math.min(12, Number(l.parc) || 1)), base = Math.floor(Number(l.valor) * 100 / qtd) / 100; let distrib = 0; for (let i = 0; i < qtd; i++) { const valor = i === qtd - 1 ? r2(Number(l.valor) - distrib) : base; distrib = r2(distrib + valor); parcelas.push({ id: novoId(), descricao: `Venda ${numPed(n)} · Boleto (${i + 1}/${qtd})`, cliente: v.clienteNome, valor, vencimento: somarDiasISO(dt, (i + 1) * 30), status: 'pendente', origem: 'boleto_venda', vendaNumero: n, parcela: { n: i + 1, de: qtd }, criadoEm: new Date().toISOString() }); } });
+  gravarChave('ven_receberAvulso', [...avulso, ...parcelas]);
   gravarChave('ven_orcamentosSalvos', d.pedidos.map(x => Number(x.numero) === Number(o.numero) ? { ...x, tipoRegistro: 'venda_fechada', vendaNumero: n, atualizado: new Date().toISOString() } : x));
   el._fechar(); render(); posVenda(v); return false;
 }
@@ -166,6 +170,7 @@ function reabrirVenda(num) {
   if (vendaTemRecebimento(v)) return toast('Esta venda tem recebimentos. Desfaça-os antes de reabrir.', 'erro');
   confirmar('Reabrir como pedido?', 'A venda sai de A receber e o pedido volta para edição.', () => {
     gravarChave('ven_vendas', d.vendas.filter(x => Number(x.numero) !== Number(num)));
+    gravarChave('ven_receberAvulso', d.avulso.filter(x => Number(x.vendaNumero) !== Number(num)));
     gravarChave('ven_orcamentosSalvos', d.pedidos.map(o => Number(o.numero) === Number(v.orcamentoNumero) ? { ...o, tipoRegistro: 'orcamento', vendaNumero: undefined } : o)); toast('Pedido reaberto.'); render();
   }, 'Reabrir');
 }
@@ -175,6 +180,7 @@ function excluirPedido(tipo, num) {
   const on = tipo === 'venda' ? (v && v.orcamentoNumero) : num;
   confirmar('Excluir ' + (tipo === 'venda' ? 'venda' : 'pedido') + '?', 'O registro será removido, inclusive a cobrança em A receber.', () => {
     gravarChave('ven_vendas', d.vendas.filter(x => !v || Number(x.numero) !== Number(v.numero)));
+    if (v) gravarChave('ven_receberAvulso', d.avulso.filter(x => Number(x.vendaNumero) !== Number(v.numero)));
     gravarChave('ven_orcamentosSalvos', d.pedidos.filter(o => Number(o.numero) !== Number(on))); toast('Excluído.'); render();
   }, 'Excluir', true);
 }

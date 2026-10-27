@@ -1,0 +1,40 @@
+name: Build Windows
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: npm run dist:win
+      - name: Package portable build and checksum
+        shell: pwsh
+        run: |
+          $package = "dist/VEN-Desktop-pasta-portatil.zip"
+          Compress-Archive -Path "dist/win-unpacked/*" -DestinationPath $package -CompressionLevel Optimal
+          $hash = (Get-FileHash -LiteralPath $package -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  VEN-Desktop-pasta-portatil.zip" | Set-Content -LiteralPath "$package.sha256" -NoNewline -Encoding ascii
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VEN-Desktop-Windows
+          path: |
+            dist/VEN-Desktop-pasta-portatil.zip
+            dist/VEN-Desktop-pasta-portatil.zip.sha256
+      - name: Attach assets to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/VEN-Desktop-pasta-portatil.zip
+            dist/VEN-Desktop-pasta-portatil.zip.sha256

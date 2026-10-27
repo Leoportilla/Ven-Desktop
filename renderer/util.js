@@ -88,6 +88,7 @@ const gravarAnexoConta = (id, o) => { if (!o || (!o.boleto && !o.comprovante)) r
 
 /* ---------- regras de negócio ---------- */
 const saldoVenda = v => Math.max(0, r2((Number(v.total) || 0) - (Number(v.recebido) || 0)));
+const somarDiasISO = (iso, dias) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + Number(dias || 0)); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const estadoVenda = v => (Number(v.recebido) || 0) >= (Number(v.total) || 0) - 0.009 ? 'paid' : ((Number(v.recebido) || 0) > 0 ? 'partial' : 'pending');
 const vendaTemRecebimento = v => !!v && ((Number(v.recebido) || 0) > 0.009 || arr(v.pagamentos).some(p => (Number(p.valor) || 0) > 0.009));
 function totaisItens(itens, desc, tipo) {

@@ -107,7 +107,7 @@ function codigoLivre(produtos) { const usados = new Set(produtos.map(x => String
 function miniatura(p, cls = '') { const s = imgSegura(p && p.img); return s ? `<img class="thumb ${cls}" src="${esc(s)}" alt="" loading="lazy">` : `<span class="thumb vazio ${cls}">${ic(p && p.kind === 'service' ? 'sliders' : 'box')}</span>`; }
 function formProduto(id) {
   const d = dados(), p = id ? d.produtos.find(x => String(x.id) === String(id)) : null, cod = codigoLivre(d.produtos); let foto = p ? imgSegura(p.img) : '';
-  const serv = p && p.kind === 'service';
+  const serv = p && p.kind === 'service', lucroInicial = p && Number(p.c) > 0 ? ((Number(p.p) - Number(p.c)) / Number(p.c) * 100).toFixed(1) : '';
   modal({
     titulo: p ? 'Editar item' : 'Novo produto ou serviço', icone: 'box', tamanho: 'lg',
     corpo: `<div class="fgrid g6">
@@ -118,7 +118,8 @@ function formProduto(id) {
       ${campo('Descrição *', 'pDesc', p && p.d, 'maxlength="160"', 'c6')}
       ${campo('Preço de venda (R$)', 'pPreco', p ? moeda(p.p) : '', 'data-moeda inputmode="decimal" placeholder="0,00"', 'c2')}
       ${campo('Custo (R$)', 'pCusto', p && p.c ? moeda(p.c) : '', 'data-moeda inputmode="decimal" placeholder="0,00"', 'c2')}
-      <label class="f c2" id="pMargem"><span>Margem</span><input id="pMargemV" disabled value="—"></label>
+      <label class="f c2" id="pMargem"><span>Lucro sobre custo (%)</span><input id="pMargemV" type="number" min="-100" max="1000" step="0.1" inputmode="decimal" value="${esc(lucroInicial)}" placeholder="60"><small>Acréscimo sobre o custo</small></label>
+      <small class="c6" id="pLucroValor">Informe preço e custo para ver o lucro por unidade.</small>
       <div id="pBlocoProd" class="fgrid g6 c6 sem-gap">
         ${campo('Estoque', 'pEst', p ? p.q : '', 'inputmode="decimal"', 'c2')}
         ${campo('Unidade', 'pUn', p ? p.unit : 'un', 'maxlength="8"', 'c2')}
@@ -133,8 +134,11 @@ function formProduto(id) {
       el.querySelector('#pFotoInp').onchange = async e => { const f = e.target.files[0]; if (!f) return; try { foto = await comprimirImagem(await lerArquivoDataUrl(f), 640, .82); mostrar(); } catch (_) { toast('Não foi possível ler a imagem.', 'erro'); } e.target.value = ''; };
       const tipo = el.querySelector('#pTipo'), sync = () => { const s = tipo.value === 'service'; el.querySelector('#pBlocoProd').classList.toggle('oculto', s); el.querySelector('#pBlocoServ').classList.toggle('oculto', !s); }; tipo.onchange = sync;
       el.querySelector('#pServTipo').value = p && p.serviceType === 'hourly' ? 'hourly' : 'fixed'; sync();
-      const marg = () => { const pv = numeroBR(V(el, 'pPreco')), c = numeroBR(V(el, 'pCusto')); el.querySelector('#pMargemV').value = pv > 0 && c > 0 ? ((pv - c) / pv * 100).toFixed(1).replace('.', ',') + '%  (' + brl(pv - c) + ')' : '—'; };
-      ['pPreco', 'pCusto'].forEach(i => el.querySelector('#' + i).addEventListener('input', marg)); marg();
+      const mostraLucro = () => { const pv = numeroBR(V(el, 'pPreco')), c = numeroBR(V(el, 'pCusto')); el.querySelector('#pLucroValor').textContent = pv > 0 && c > 0 ? `Lucro bruto por unidade: ${brl(pv - c)}` : 'Informe preço e custo para ver o lucro por unidade.'; };
+      const syncLucro = () => { const pv = numeroBR(V(el, 'pPreco')), c = numeroBR(V(el, 'pCusto')); el.querySelector('#pMargemV').value = pv > 0 && c > 0 ? ((pv - c) / c * 100).toFixed(1) : ''; mostraLucro(); };
+      const aplicaLucro = () => { const c = numeroBR(V(el, 'pCusto')), margem = numeroBR(V(el, 'pMargemV')); if (c > 0) el.querySelector('#pPreco').value = moeda(Math.max(0, r2(c * (1 + margem / 100)))); mostraLucro(); };
+      ['pPreco', 'pCusto'].forEach(i => el.querySelector('#' + i).addEventListener('input', syncLucro));
+      el.querySelector('#pMargemV').addEventListener('input', aplicaLucro); syncLucro();
       el.querySelector('#pNcmUsados').onclick = () => ncmUsados(n => { el.querySelector('#pNcm').value = ncmBR(n); });
       el.querySelector('#pNcmBuscar').onclick = () => buscarNcmModal(V(el, 'pDesc'), n => { el.querySelector('#pNcm').value = ncmBR(n); });
     },
@@ -179,26 +183,31 @@ function buscarNcmModal(sugestao, aoEscolher) {
 function importarNfe() {
   const el = modal({
     titulo: 'Importar NF-e (XML)', sub: 'Entrada de mercadoria: atualiza custo e estoque e cadastra o que for novo.', icone: 'xml', tamanho: 'xl',
-    corpo: `<div id="nfeArea"><label class="drop" id="nfeDrop">${ic('upload')}<b>Escolha o XML da nota fiscal</b><small>Ou arraste o arquivo para cá. É o XML original recebido do fornecedor.</small><input type="file" id="nfeInp" accept=".xml,text/xml,application/xml" hidden></label></div>`,
+    corpo: `<div id="nfeEstado" class="consulta" hidden></div><div id="nfeArea"><div class="drop" id="nfeDrop" role="button" tabindex="0">${ic('upload')}<b>Escolha o XML da nota fiscal</b><small>Ou arraste o arquivo para cá. É o XML original recebido do fornecedor.</small><input type="file" id="nfeInp" accept=".xml,text/xml,application/xml" hidden></div></div>`,
     botoes: [{ t: 'Cancelar' }, { t: 'Importar itens', pri: true, id: 'nfeOk', fn: () => aplicarNfe(el) }]
   });
   el.querySelector('#nfeOk').disabled = true; el._nfe = null;
+  let lendo = false;
+  const inp = el.querySelector('#nfeInp'), drop = el.querySelector('#nfeDrop'), estado = el.querySelector('#nfeEstado'), botaoImportar = el.querySelector('#nfeOk');
   const ler = async f => {
+    if (!f || lendo || !el.isConnected) return;
+    lendo = true; inp.disabled = true; botaoImportar.disabled = true; estado.hidden = false; estado.className = 'consulta load'; estado.textContent = 'Lendo o XML…';
     try {
       const nfe = lerNfeXml(await f.text(), dados().produtos, lerChave('ven_nfe_importadas', [])); el._nfe = nfe; const dup = nfe.dups || [];
       const novos = nfe.itens.filter(i => !i.existente).length;
       el.querySelector('#nfeArea').innerHTML = `<div class="nfe-cab"><div><b>${esc(nfe.fornecedor || 'Fornecedor')}</b><small>NF-e ${esc(nfe.numeroNf || '')} · ${nfe.itens.length} item(ns): ${novos} novo(s), ${nfe.itens.length - novos} já cadastrado(s)</small></div>
-        <label class="f inline"><span>Markup sobre o custo (só itens novos)</span><span class="input-sufixo"><input id="nfeMk" type="number" min="0" max="1000" step="1" value="0"><i>%</i></span></label></div>
+        <label class="f inline"><span>Lucro sobre o custo (só itens novos)</span><span class="input-sufixo"><input id="nfeMk" type="number" min="0" max="1000" step="1" value="60"><i>%</i></span></label></div>
         <div class="tabela peq"><table><thead><tr><th>Item</th><th class="num">Qtd</th><th class="num">Custo un.</th><th class="num">Venda sugerida</th><th>NCM</th><th>Situação</th></tr></thead><tbody>${nfe.itens.map((i, n) => `<tr><td><b>${esc(i.nome)}</b><small class="sub">${esc(i.codigo)}${i.ean ? ' · ' + esc(i.ean) : ''}</small></td><td class="num">${i.q}</td><td class="num">${brl(i.custoEstimado)}</td><td class="num" data-venda="${n}">${i.existente ? 'mantém' : '—'}</td><td>${esc(ncmBR(i.ncm) || '—')}</td><td>${i.existente ? pill('Atualiza', 'brand') : pill('Novo', 'pos')}</td></tr>`).join('')}</tbody></table></div>
         ${nfe.dups.length ? `<label class="chk-linha"><input type="checkbox" id="nfeDup" checked><span>Lançar ${nfe.dups.length} parcela(s) em Contas a pagar<small>${nfe.dups.map(x => dataBR(x.venc) + ' ' + brl(x.valor)).join(' · ')}</small></span></label>` : ''}`;
       const mk = el.querySelector('#nfeMk'), sync = () => { const m = Math.max(0, Number(mk.value) || 0); nfe.itens.forEach((i, n) => { const c = el.querySelector(`[data-venda="${n}"]`); if (c && !i.existente) c.textContent = m > 0 ? brl(i.custoEstimado * (1 + m / 100)) : '—'; }); }; mk.oninput = sync; sync();
-      el.querySelector('#nfeOk').disabled = false;
-    } catch (e) { toast(e.message || 'Não foi possível ler o XML.', 'erro'); }
+      botaoImportar.disabled = false; estado.hidden = true;
+    } catch (e) { if (!el.isConnected) return; estado.className = 'consulta err'; estado.textContent = e.message || 'Não foi possível ler o XML. Escolha o arquivo novamente.'; }
+    finally { lendo = false; if (el.isConnected) inp.disabled = false; }
   };
-  const inp = el.querySelector('#nfeInp'), drop = el.querySelector('#nfeDrop');
-  inp.onchange = () => inp.files[0] && ler(inp.files[0]);
-  drop.ondragover = e => { e.preventDefault(); drop.classList.add('sobre'); }; drop.ondragleave = () => drop.classList.remove('sobre'); drop.ondrop = e => { e.preventDefault(); drop.classList.remove('sobre'); e.dataTransfer.files[0] && ler(e.dataTransfer.files[0]); };
-  drop.onclick = e => { if (e.target !== inp) inp.click(); };
+  inp.onchange = () => { const f = inp.files && inp.files[0]; inp.value = ''; ler(f); };
+  drop.ondragover = e => { e.preventDefault(); drop.classList.add('sobre'); }; drop.ondragleave = () => drop.classList.remove('sobre'); drop.ondrop = e => { e.preventDefault(); drop.classList.remove('sobre'); ler(e.dataTransfer.files && e.dataTransfer.files[0]); };
+  drop.onclick = e => { if (e.target === inp || lendo) return; e.preventDefault(); inp.click(); };
+  drop.onkeydown = e => { if ((e.key === 'Enter' || e.key === ' ') && !lendo) { e.preventDefault(); inp.click(); } };
 }
 function aplicarNfe(el) {
   const nfe = el._nfe; if (!nfe) return false; const mk = Math.max(0, Number(el.querySelector('#nfeMk').value) || 0); let novos = 0, atualizados = 0;

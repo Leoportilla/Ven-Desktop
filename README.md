@@ -1,49 +1,18 @@
-# VEN Desktop (Windows)
+# VEN Desktop 0.5.7
 
-Versão portátil do VEN para computador. Usa backup JSON compatível com o app móvel e pode sincronizar pelo Google Drive.
+Código-fonte do VEN Desktop, baseado no pacote portátil 0.5.6 fornecido. Aplicativo Windows Electron; o aplicativo Android não faz parte deste repositório.
 
-## Atualização automática
+## Compilar no Windows ou no GitHub
 
-O VEN verifica atualizações publicadas em **GitHub Releases** ao iniciar e também pelo botão **Atualizações** no topo. Ao encontrar versão nova, oferece baixar e instalar. O pacote é validado por SHA-256 antes de substituir arquivos. A atualização sobrepõe os arquivos do programa e **não copia nem apaga a pasta `dados`**, que contém backup, configurações locais e autorização do Google.
+Requer Node.js 20 ou posterior. No Windows:
 
-Para publicar uma versão nova:
-
-1. Atualize o campo `version` em `package.json` (por exemplo, `0.5.3`).
-2. Faça commit e envie para a branch `main`.
-3. Crie e envie uma tag correspondente à versão, começando com `v` (por exemplo, `v0.5.3`).
-4. O GitHub Actions compila a pasta portátil e cria um GitHub Release com `VEN-Desktop-pasta-portatil.zip` e o respectivo arquivo `.sha256`. O aplicativo consulta o último Release publicado.
-
-A execução da atualização requer que a pasta portátil permita gravação pelo usuário do Windows. Se o VEN estiver dentro de uma pasta protegida pelo Windows, mova a pasta portátil para um local gravável, como uma pasta dentro do perfil do usuário. Não extraia a nova versão por cima manualmente enquanto o programa estiver aberto.
-
-## O que existe nesta versão
-
-- **Visual**: menu lateral, ícones SVG, tema claro/escuro e busca rápida (Ctrl+K).
-- **Venda (PDV)**: grade de produtos com foto, leitor de código de barras, desconto e atalhos.
-- **Pagamento dividido**: PIX, dinheiro com troco, cartão parcelado, débito e outras formas.
-- **Impressão**: cupom de 58/80 mm ou A4, PDF e compartilhamento.
-- **Empresa**: dados e logotipo, preenchimento por CNPJ e CEP.
-- **Clientes e produtos**: fotos, NCM, margem e importação de NF-e.
-- **Financeiro**: contas a pagar e receber, calendário e relatórios.
-- **Google Drive**: importação do backup gerado no celular.
-
-## Dados locais
-
-Os dados ficam na pasta `dados` ao lado do programa (`ven-backup.json`, `config.json` e credenciais locais). Mantenha essa pasta para preservar os dados e as configurações. Recomendamos ter um backup externo antes de grandes atualizações.
-
-## Gerar localmente
-
-```bash
+```powershell
 npm install
-npm run dist
+npm run dist:win
 ```
 
-O workflow do GitHub Actions gera o ZIP portátil para teste a cada push à `main` e publica um Release quando uma tag `v*` é enviada.
+O executável e os arquivos da versão portátil serão gravados em `dist/win-unpacked`. Para criar o ZIP distribuível, compacte o conteúdo dessa pasta (com `VEN.exe` na raiz do ZIP). A ação em `.github/workflows/build-windows.yml` faz isso e, ao publicar uma tag `v*`, anexa o ZIP e o SHA-256 à Release.
 
-## Leitura de fotos de boletos (OCR)
+O VEN guarda o banco em `dados/ven-backup.json` junto ao aplicativo portátil. Não inclua a pasta `dados` em commits ou releases: ela contém informações da loja. O atualizador do aplicativo consulta a última GitHub Release em `Leoportilla/Ven-Desktop`, espera os nomes `VEN-Desktop-pasta-portatil.zip` e `VEN-Desktop-pasta-portatil.zip.sha256`, e preserva a pasta `dados` ao instalar.
 
-Depende do pacote opcional `tesseract.js`. Se não estiver disponível, o VEN avisa e permite digitar o código.
-
-
-## Atualização 0.5.4
-- Painel inicial com tamanhos mais confortáveis, evitando reduzir excessivamente os cartões.
-- Botão “Imprimir pedido” no caixa imprime um orçamento temporário sem salvar pedido ou finalizar venda.
+As dependências opcionais `tesseract.js` e `@tesseract.js-data/por` dão suporte à leitura OCR de documentos. O build mantém Electron 33.4.11, a versão do runtime presente no pacote-base.

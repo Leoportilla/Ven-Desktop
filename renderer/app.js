@@ -15,7 +15,7 @@ function telaBoasVindas() {
 function render() {
   renderNav(); const c = $('#conteudo'); c.onclick = c.oninput = c.onchange = c.onkeydown = null; c.classList.toggle('pdv-tela', tela === 'pdv' && !!backup);
   if (!backup) { c.innerHTML = telaBoasVindas(); $('#bvAbrir').onclick = abrir; $('#bvDrive').onclick = () => { tela = 'config'; sub.cfg = 'nuvem'; novoBackupVazio(); }; $('#bvZero').onclick = novoBackupVazio; return; }
-  if (tela === 'pdv' && !pdv) pdv = { edit: null, cli: '', desc: 0, tipo: '%', obs: '', itens: [], cat: 'todos' };
+  if (tela === 'pdv' && !pdv) pdv = { view: 'lista', edit: null, cli: '', desc: 0, tipo: '%', obs: '', itens: [], cat: 'todos' };
   const y = c.scrollTop; c.innerHTML = VIEWS[tela](dados()); c.scrollTop = tela === ultimaTelaRender ? y : 0; ultimaTelaRender = tela;
   if (tela === 'pdv') ligarPdv(); if (tela === 'config') { ({ empresa: ligarEmpresa, impressao: ligarImpressao, nuvem: ligarNuvem, dados: ligarDados }[sub.cfg || 'empresa'] || (() => { }))(); }
   aplicarMascaras(c);
@@ -46,7 +46,7 @@ const MENUS = {
   orc: (n, el) => [{ t: 'Editar pedido', icone: 'edit', fn: () => abrirPdv(n) }, { t: 'Imprimir orçamento', icone: 'print', fn: () => { const o = dados().pedidos.find(x => Number(x.numero) === Number(n)); o && menuImprimir(el, docDePedido(o)); } }, '-', { t: 'Excluir pedido', icone: 'trash', perigo: true, fn: () => excluirPedido('orc', n) }],
   conta: id => { const c = dados().pagar.find(x => String(x.id) === String(id)) || {}; return [{ t: 'Editar', icone: 'edit', fn: () => editarConta(id) }, ...(c.status === 'paga' ? [{ t: 'Desfazer pagamento', icone: 'undo', fn: () => desfazerPagamento(id) }] : []), ...(c.linha ? [{ t: 'Copiar linha digitável', icone: 'copy', fn: () => navigator.clipboard.writeText(soDig(c.linha)).then(() => toast('Código copiado.')) }] : []), ...(c.pix ? [{ t: 'Copiar Pix copia e cola', icone: 'pix', fn: () => navigator.clipboard.writeText(c.pix).then(() => toast('Pix copiado.')) }] : []), '-', { t: 'Excluir', icone: 'trash', perigo: true, fn: () => excluirConta(id) }]; },
   rcv: n => [{ t: 'Abrir venda', icone: 'eye', fn: () => verPedido('venda', n) }, { t: 'Desfazer último recebimento', icone: 'undo', fn: () => { const v = dados().vendas.find(x => Number(x.numero) === Number(n)); if (v && vendaTemRecebimento(v)) desfazerRecebimento(n); else toast('Esta venda não tem recebimentos.', 'erro'); } }],
-  rca: id => [{ t: 'Editar', icone: 'edit', fn: () => formReceita(id) }, { t: 'Excluir', icone: 'trash', perigo: true, fn: () => excluirReceita(id) }]
+  rca: id => { const c = dados().avulso.find(x => String(x.id) === String(id)); return c && c.vendaNumero ? (c.status === 'recebida' ? [{ t: 'Desfazer recebimento', icone: 'undo', fn: () => desfazerReceita(id) }] : [{ t: 'Abrir venda', icone: 'eye', fn: () => verPedido('venda', c.vendaNumero) }]) : [{ t: 'Editar', icone: 'edit', fn: () => formReceita(id) }, { t: 'Excluir', icone: 'trash', perigo: true, fn: () => excluirReceita(id) }]; }
 };
 const ACOES = {
   pdv: () => irPara('pdv'), ir: k => irPara(k), novaConta: () => { filaContas = []; formConta(rascunhoVazio()); }, importarConta: abrirImportarConta, novaReceita: () => formReceita(), novoCliente: () => formCliente(), novoProduto: () => formProduto(), importarNfe: importarNfe,

@@ -1,38 +1,28 @@
 {
   "name": "ven-desktop",
-  "version": "0.5.4",
+  "version": "0.5.8",
   "description": "VEN para computador (Windows)",
   "main": "main.js",
   "author": "VEN",
   "license": "UNLICENSED",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --win dir"
-  },
-  "devDependencies": {
-    "electron": "^33.2.0",
-    "electron-builder": "^25.1.8"
-  },
-  "optionalDependencies": {
-    "tesseract.js": ">=5.1.0",
-    "@tesseract.js-data/por": "*"
+    "dist:win": "electron-builder --win dir"
   },
   "build": {
     "appId": "br.com.ven.desktop",
     "productName": "VEN",
     "asar": false,
-    "files": [
-      "main.js",
-      "preload.js",
-      "servicos.js",
-      "renderer/**/*"
-    ],
-    "win": {
-      "target": [
-        "dir"
-      ],
-      "icon": "build/icon.ico",
-      "artifactName": "VEN-Desktop-${version}-portable.exe"
-    }
+    "directories": { "output": "dist" },
+    "files": ["main.js", "preload.js", "servicos.js", "renderer/**/*", "package.json", "!node_modules/**/*"],
+    "win": { "executableName": "VEN", "target": [{ "target": "dir", "arch": ["x64"] }] }
+  },
+  "devDependencies": {
+    "electron": "33.4.11",
+    "electron-builder": "25.1.8"
+  },
+  "optionalDependencies": {
+    "tesseract.js": ">=5.1.0",
+    "@tesseract.js-data/por": "*"
   }
 }
