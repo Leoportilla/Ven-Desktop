@@ -71,9 +71,10 @@ function vInicio(d) {
 /* ---------- Pedidos ---------- */
 function vPedidos(d) {
   const f = sub.pedidos || 'todos';
-  const ven = d.vendas.map(v => ({ k: 'venda', n: v.numero, data: v.data, cli: v.clienteNome || 'Sem cliente', total: Number(v.total) || 0, st: pillVenda(v), itens: arr(v.itens).length, saldo: saldoVenda(v) }));
+  const pedPorNum = new Map(d.pedidos.map(o => [Number(o.numero), o]));
+  const ven = d.vendas.map(v => ({ k: 'venda', n: v.numero, data: (pedPorNum.get(Number(v.orcamentoNumero)) || {}).data || v.data, cli: v.clienteNome || 'Sem cliente', total: Number(v.total) || 0, st: pill('Venda fechada', 'ok') + ' ' + pillVenda(v), itens: arr(v.itens).length, saldo: saldoVenda(v) }));
   const vend = new Set(d.vendas.map(v => Number(v.orcamentoNumero)));
-  const orc = d.pedidos.filter(o => !vend.has(Number(o.numero))).map(o => ({ k: 'orc', n: o.numero, data: o.data, cli: o.cli || 'Sem cliente', total: totaisItens(o.itens, o.desc, o.tipo).total, st: pill('Pedido aberto', 'mut'), itens: arr(o.itens).length, saldo: 0 }));
+  const orc = d.pedidos.filter(o => !vend.has(Number(o.numero))).map(o => ({ k: 'orc', n: o.numero, data: o.data, cli: o.cli || 'Sem cliente', total: totaisItens(o.itens, o.desc, o.tipo).total, st: pill(o.tipoRegistro === 'venda_pendente' ? 'Venda em andamento' : 'Orçamento', 'mut'), itens: arr(o.itens).length, saldo: 0 }));
   const todos = [...ven, ...orc], l = todos.filter(x => f === 'todos' || (f === 'vendas' ? x.k === 'venda' : x.k === 'orc')).filter(x => casa(x.n, numPed(x.n), x.cli)).sort((a, c) => String(c.data).localeCompare(String(a.data)));
   return cab('Pedidos', 'Vendas fechadas e pedidos em aberto.', b('Nova venda', 'pdv', { pri: true, icone: 'plus' })) + `<div class="barra">${abas('pedidos', [['todos', 'Todos', todos.length], ['vendas', 'Vendas', ven.length], ['orc', 'Em aberto', orc.length]], f)}</div>`
     + tabela([{ t: 'Pedido' }, { t: 'Cliente' }, { t: 'Data' }, { t: 'Itens', num: 1, cls: 'esconde' }, { t: 'Total', num: 1 }, { t: 'Situação' }, { t: '', cls: 'acoes-col' }],
@@ -228,9 +229,9 @@ function cfgAparencia() {
   return `<div class="card cfg"><p class="cfg-intro">Escolha como o VEN aparece neste computador.</p><div class="temas">${[['auto', 'Automático', 'monitor', 'Segue o Windows'], ['claro', 'Claro', 'sun', 'Fundo branco'], ['escuro', 'Escuro', 'moon', 'Menos brilho']].map(([k, n, i, s]) => `<button class="tema ${t === k ? 'on' : ''}" data-tema="${k}">${ic(i)}<b>${n}</b><small>${s}</small></button>`).join('')}</div></div>`;
 }
 function cfgNuvem() {
-  return `<div class="card cfg"><p class="cfg-intro">Conecte a mesma conta Google usada no app do celular para trazer o backup mais recente do Drive.</p>
+  return `<div class="card cfg"><p class="cfg-intro">Conecte a mesma conta Google usada no app do celular e use <b>Sincronizar</b> para juntar o que mudou no PC e no celular. Nada é perdido: pedidos, clientes, contas e produtos novos dos dois lados ficam nos dois. Gratuito, usa a pasta privada do seu Drive.</p>
     <div class="nuvem"><span class="nuvem-ico">${ic('cloud')}</span><div><b id="nuvemTit">Google Drive</b><small id="nuvemSub">Verificando…</small></div></div>
-    <div class="cfg-rod esq"><button class="btn" id="btnDriveConectar">${ic('link')}<span>Conectar Google</span></button><button class="btn pri" id="btnDriveSync">${ic('sync')}Sincronizar com o celular</button><button class="btn suave" id="btnDriveSair" hidden>Desconectar</button></div></div>`;
+    <div class="cfg-rod esq"><button class="btn" id="btnDriveConectar">${ic('link')}<span>Conectar Google</span></button><button class="btn pri" id="btnDriveSync">${ic('sync')}Sincronizar agora</button><button class="btn" id="btnDriveSubst" title="Descarta o que está neste PC e usa o backup do celular">Substituir pelo do celular</button><button class="btn suave" id="btnDriveSair" hidden>Desconectar</button></div></div>`;
 }
 function cfgDados(d) {
   return `<div class="card cfg"><p class="cfg-intro">Tudo é gravado automaticamente neste computador, na pasta <b>dados</b> ao lado do programa. Faça cópias de segurança de vez em quando.</p>

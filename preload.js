@@ -23,6 +23,9 @@ contextBridge.exposeInMainWorld('venDesktop', {
   driveEstado: inv('drive:estado'),
   driveDesconectar: inv('drive:desconectar'),
   driveSincronizar: inv('drive:sincronizar'),
+  syncBaixar: inv('sync:baixar'),
+  syncEnviar: inv('sync:enviar'),
+  syncCopia: inv('sync:copia'),
   verificarAtualizacao: inv('atualizador:verificar'),
   instalarAtualizacao: inv('atualizador:instalar')
 });

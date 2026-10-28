@@ -99,14 +99,37 @@ async function ligarNuvem() {
   estado();
   conectar.onclick = () => { $('#googleClientSecret').value = ''; googleCredModal.hidden = false; $('#googleClientSecret').focus(); };
   sair.onclick = async () => { try { await window.venDesktop.driveDesconectar(); } catch (_) { } toast('Google desconectado.'); estado(); };
-  sync.onclick = async () => {
+  sync.onclick = () => sincronizarAgora();
+  $('#btnDriveSubst').onclick = async () => {
     if (!(await estado())) return toast('Primeiro conecte sua conta Google.', 'erro');
-    confirmar('Sincronizar com o celular?', 'Os dados abertos serão substituídos pelo backup mais recente do Drive. Uma cópia dos dados atuais é salva antes.', async () => {
+    confirmar('Substituir pelos dados do celular?', 'Tudo o que está neste PC será trocado pelo backup mais recente do Drive. Uma cópia dos dados atuais é salva antes. Para juntar os dois lados sem perder nada, use "Sincronizar agora".', async () => {
       toast('Procurando backup no Google Drive…');
-      try { const r = await window.venDesktop.driveSincronizar(); if (!r.ok) return toast(r.erro || 'Não foi possível sincronizar.', 'erro'); backup = r.dados; origem = r.nome; salvoEm = ''; toast('Sincronização concluída: ' + r.nome); render(); } catch (e) { toast(e.message || 'Falha na sincronização.', 'erro'); }
-    }, 'Sincronizar');
+      try { const r = await window.venDesktop.driveSincronizar(); if (!r.ok) return toast(r.erro || 'Não foi possível sincronizar.', 'erro'); backup = r.dados; origem = r.nome; salvoEm = ''; await salvarConfig({ syncBase: null }); toast('Dados substituídos: ' + r.nome); render(); } catch (e) { toast(e.message || 'Falha na sincronização.', 'erro'); }
+    }, 'Substituir', true);
   };
+  if (cfg.syncEm) { const s = $('#nuvemSub'); const t = () => { s.dataset.extra = ' Última sincronização: ' + new Date(cfg.syncEm).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) + '.'; }; t(); setTimeout(() => { s.textContent += s.dataset.extra; }, 400); }
 }
+/* ===== Sincronização com o celular (junta os dois lados) ===== */
+let sincronizando = false;
+async function sincronizarAgora() {
+  if (sincronizando) return; if (!backup) return toast('Abra ou crie os dados primeiro.', 'erro');
+  let ok = false; try { ok = !!(await window.venDesktop.driveEstado()).conectado; } catch (_) { }
+  if (!ok) { toast('Conecte sua conta Google para sincronizar.', 'erro'); tela = 'config'; sub.cfg = 'nuvem'; render(); return; }
+  sincronizando = true; const bt = $('#btnSync'), tx = $('#btnSyncTxt'); bt.disabled = true; tx.textContent = 'Sincronizando…';
+  try {
+    const r = await window.venDesktop.syncBaixar(); if (!r.ok) throw new Error(r.erro || 'Não foi possível ler o Drive.');
+    const remoto = r.vazio ? {} : JSON.parse(r.texto).storage;
+    const m = VENSync.mesclar(backup.storage, remoto, cfg.syncBase || {});
+    const naoVen = {}; Object.keys(backup.storage).forEach(k => { if (!k.startsWith('ven_')) naoVen[k] = backup.storage[k]; });
+    const novo = { app: 'VEN Vendas', format: 1, createdAt: new Date().toISOString(), origin: 'sync-pc', storage: { ...naoVen, ...m.storage } };
+    await window.venDesktop.syncCopia(JSON.stringify(backup));
+    const up = await window.venDesktop.syncEnviar(JSON.stringify(novo)); if (!up.ok) throw new Error(up.erro || 'Não foi possível enviar ao Drive.');
+    backup = novo; origem = 'Sincronizado com o celular'; salvoEm = ''; agendarGravacao(); await salvarConfig({ syncBase: m.base, syncEm: new Date().toISOString() });
+    toast(r.vazio ? 'Dados deste PC enviados ao Drive. Agora sincronize no celular.' : 'Sincronizado: ' + VENSync.resumoTexto(m.resumo) + '.'); render();
+  } catch (e) { toast('Sincronização não concluída: ' + (e.message || e), 'erro'); }
+  finally { sincronizando = false; bt.disabled = false; tx.textContent = 'Sincronizar'; }
+}
+$('#btnSync').onclick = sincronizarAgora;
 $('#googleCredCancel').onclick = () => { googleCredModal.hidden = true; };
 $('#googleCredContinue').onclick = async () => {
   const segredo = $('#googleClientSecret').value.trim(); if (!segredo) { toast('Cole a chave secreta do cliente OAuth.', 'erro'); return; }

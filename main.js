@@ -139,12 +139,49 @@ ipcMain.handle('drive:sincronizar', async () => {
     return { ok: true, dados, nome: f.name, modificado: f.modifiedTime || null, total: files.length };
   } catch (e) { return { ok: false, erro: e.message }; }
 });
+/* ---- Sincronização com o celular (mescla): cada aparelho grava o próprio arquivo na pasta privada do Drive ---- */
+async function driveReq(url, init) {
+  const tok = await tokenAcesso(); const resp = await fetch(url, { ...(init || {}), headers: { Authorization: 'Bearer ' + tok, ...((init && init.headers) || {}) } });
+  if (!resp.ok) { let m = ''; try { const j = await resp.json(); m = j.error && j.error.message || ''; } catch (_) {} throw new Error(`Google Drive respondeu ${resp.status}${m ? ': ' + m : ''}`); }
+  return resp;
+}
+async function listarBackupsDrive() {
+  const q = encodeURIComponent("'appDataFolder' in parents and trashed = false and name contains 'VEN_BACKUP_'");
+  const j = await (await driveReq('https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&orderBy=modifiedTime%20desc&pageSize=100&fields=files(id,name,modifiedTime,size)&q=' + q)).json();
+  return (j.files || []).filter(f => /^VEN_BACKUP_.*\.json$/i.test(f.name || ''));
+}
+ipcMain.handle('sync:baixar', async () => {
+  try {
+    const f = (await listarBackupsDrive()).find(x => !/^VEN_BACKUP_PC_/i.test(x.name));
+    if (!f) return { ok: true, vazio: true };
+    const texto = await (await driveReq('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(f.id) + '?alt=media')).text(); validar(texto);
+    return { ok: true, texto, nome: f.name, modificado: f.modifiedTime || null };
+  } catch (e) { return { ok: false, erro: e.message }; }
+});
+ipcMain.handle('sync:enviar', async (_e, texto) => {
+  try {
+    validar(texto); const corpo = Buffer.from(texto, 'utf8'); if (corpo.length > 25 * 1024 * 1024) throw new Error('Os dados ficaram grandes demais para enviar (acima de 25 MB).');
+    const d = new Date(), p = n => String(n).padStart(2, '0'), nome = `VEN_BACKUP_PC_${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.json`;
+    const lim = 'ven' + Date.now().toString(16), meta = JSON.stringify({ name: nome, parents: ['appDataFolder'] });
+    const body = Buffer.concat([Buffer.from(`--${lim}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${meta}\r\n--${lim}\r\nContent-Type: application/json\r\n\r\n`), corpo, Buffer.from(`\r\n--${lim}--`)]);
+    await driveReq('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', { method: 'POST', headers: { 'Content-Type': 'multipart/related; boundary=' + lim }, body });
+    try { const meus = (await listarBackupsDrive()).filter(x => /^VEN_BACKUP_PC_/i.test(x.name)).slice(3); for (const x of meus) await driveReq('https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(x.id), { method: 'DELETE' }); } catch (_) {}
+    return { ok: true, nome };
+  } catch (e) { return { ok: false, erro: e.message }; }
+});
+ipcMain.handle('sync:copia', async (_e, texto) => {
+  try {
+    const nome = 'ven-antes-sincronizar-' + new Date().toISOString().replace(/[:.]/g, '-') + '.json'; fs.writeFileSync(path.join(pastaDados, nome), String(texto || ''), 'utf8');
+    const velhos = fs.readdirSync(pastaDados).filter(n => /^ven-antes-sincronizar-.*\.json$/.test(n)).sort().reverse().slice(5); velhos.forEach(n => { try { fs.unlinkSync(path.join(pastaDados, n)); } catch (_) {} });
+    return { ok: true };
+  } catch (e) { return { ok: false, erro: e.message }; }
+});
 ipcMain.handle('imprimir', async (e) => new Promise(res => { e.sender.print({ printBackground: true }, ok => res({ ok })); }));
 
 
 /* ============ Configurações locais (por computador, fora do backup) ============ */
 const arquivoConfig = path.join(pastaDados, 'config.json');
-const CONFIG_PADRAO = { tema: 'auto', impressao: { formato: '80', impressora: '', direto: false, rodape: 'Obrigado pela preferência!', mostrarLogo: true, mostrarEmpresa: true, copias: 1 } };
+const CONFIG_PADRAO = { syncBase: null, syncEm: '', tema: 'auto', impressao: { formato: '80', impressora: '', direto: false, rodape: 'Obrigado pela preferência!', mostrarLogo: true, mostrarEmpresa: true, copias: 1 } };
 function lerConfig() {
   try { const c = JSON.parse(fs.readFileSync(arquivoConfig, 'utf8')); return { ...CONFIG_PADRAO, ...c, impressao: { ...CONFIG_PADRAO.impressao, ...(c.impressao || {}) } }; }
   catch (_) { return JSON.parse(JSON.stringify(CONFIG_PADRAO)); }
